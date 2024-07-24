@@ -1,0 +1,77 @@
+site_name: Semantic Segmentation Pipeline
+site_description: Documentation for the Semantic Segmentation Pipeline project
+site_author: Your Name
+
+repo_name: yourusername/semantic_segmentation
+repo_url: https://github.com/yourusername/semantic_segmentation
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - API Reference: api_reference.md
+  - Examples:
+    - Single Image Processing: examples/single_image_processing.ipynb
+    - Video Processing: examples/video_processing.ipynb
+    - Multi-Video Processing: examples/multi_video_processing.ipynb
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          rendering:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_object_full_path: false
+            show_category_heading: true
+  - mkdocs-jupyter:
+      kernel_name: python3
+      execute: true
+      include_source: true
+
+watch:
+  - src/semantic_segmentation
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yourusername
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/yourusername
+
+copyright: Copyright &copy; 2024 Your Name

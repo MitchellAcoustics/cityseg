@@ -1,0 +1,10 @@
+input: example_inputs
+model:
+  type: oneformer
+  name: shi-labs/oneformer_ade20k_swin_large
+  dataset: ade20k
+  max_size: null  # Set to null to maintain original resolution
+  tile_size: null  # Set to null to disable tiling
+  mixed_precision: true
+frame_step: 5  # Process every 5th frame
+num_workers: 1

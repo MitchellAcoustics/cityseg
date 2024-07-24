@@ -1,0 +1,9 @@
+input: inputs/EustonTap3_15s_3840x2160.mov
+model:
+  type: oneformer
+  name: shi-labs/oneformer_ade20k_swin_large
+  dataset: ade20k
+  max_size: null  # Set to null to maintain original resolution
+  tile_size: null  # Set to null to disable tiling
+  mixed_precision: true
+frame_step: 50  # Process every 5th frame
