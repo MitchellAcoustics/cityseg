@@ -15,7 +15,7 @@ pip install git+https://github.com/yourusername/cityscape-seg.git
 Here's a simple example to get you started:
 
 ```python
-from semantic_segmentation import Config, create_segmentation_model, create_processor
+from cityscape_seg import Config, create_segmentation_model, create_processor
 
 # Load configuration
 config = Config.from_yaml("path/to/your/config.yaml")

@@ -2,7 +2,7 @@ site_name: Semantic Segmentation Pipeline
 site_description: Documentation for the Semantic Segmentation Pipeline project
 site_author: Your Name
 
-repo_name: yourusername/semantic_segmentation
+repo_name: MitchellAcoustics/cityscape-seg
 repo_url: https://github.com/yourusername/semantic_segmentation
 
 theme:
@@ -65,7 +65,7 @@ plugins:
       include_source: true
 
 watch:
-  - src/semantic_segmentation
+  - src/cityscape_seg
 
 extra:
   social:
