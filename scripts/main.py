@@ -19,7 +19,7 @@ def setup_logging(log_level):
     """
     numeric_level = getattr(logging, log_level.upper(), None)
     if not isinstance(numeric_level, int):
-        raise ValueError(f'Invalid log level: {log_level}')
+        raise ValueError(f"Invalid log level: {log_level}")
 
     class TqdmLoggingHandler(logging.Handler):
         def emit(self, record):
@@ -39,6 +39,7 @@ def setup_logging(log_level):
         ],
     )
     return logging.getLogger(__name__)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -70,7 +71,7 @@ def main():
         type=str,
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set the logging level"
+        help="Set the logging level",
     )
 
     args = parser.parse_args()
@@ -103,6 +104,7 @@ def main():
         logger.exception(f"An error occurred during processing: {str(e)}")
     finally:
         logger.info("Processing complete.")
+
 
 if __name__ == "__main__":
     main()

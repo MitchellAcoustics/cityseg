@@ -1,8 +1,8 @@
 import logging
-import traceback
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Union
+from typing import Union, Generator, Tuple, List
+from contextlib import contextmanager
 
 import cv2
 import h5py
@@ -14,7 +14,6 @@ from tqdm.auto import tqdm
 from .config import Config, InputType
 from .models import SegmentationModelBase, create_segmentation_model
 from .utils import (
-    analyze_hdf5_segmaps_with_stats,
     analyze_segmentation_map,
     append_to_csv_files,
     generate_category_stats,
@@ -38,14 +37,21 @@ class ProcessorBase(ABC):
 
     Attributes:
         model (SegmentationModelBase): The segmentation model to use for processing.
-        config (Dict[str, Any]): Configuration dictionary for the processor.
+        config (Config): Configuration object containing processing parameters.
         hdf5_file: HDF5 file handle for saving segmentation maps.
-        counts_file: File path for saving category count data.
-        percentages_file: File path for saving category percentage data.
-        colormap: Color palette for visualization.
+        counts_file (Path): File path for saving category count data.
+        percentages_file (Path): File path for saving category percentage data.
+        colormap (np.ndarray): Color palette for visualization.
     """
 
     def __init__(self, model: SegmentationModelBase, config: Config):
+        """
+        Initialize the ProcessorBase.
+
+        Args:
+            model (SegmentationModelBase): The segmentation model to use.
+            config (Config): Configuration object.
+        """
         self.model = model
         self.config = config
         self.hdf5_file = None
@@ -127,9 +133,7 @@ class ProcessorBase(ABC):
         """
         width, height = pil_image.size
         seg_map = np.zeros((height, width), dtype=np.int32)
-        for y in tqdm(
-            range(0, height, self.model.tile_size), desc="Processing tiles", leave=False
-        ):
+        for y in range(0, height, self.model.tile_size):
             for x in range(0, width, self.model.tile_size):
                 tile = pil_image.crop(
                     (
@@ -161,43 +165,16 @@ class ProcessorBase(ABC):
         if self.config.visualization.colormap == "default":
             return np.array(self.model.palette, dtype=np.uint8)[
                 seg_map.astype(np.int64) % len(self.model.palette)
-                ]
+            ]
         else:
             return self.colormap[seg_map.astype(np.int64) % len(self.colormap)]
 
-    def save_results(
-        self, frame: np.ndarray, seg_map: np.ndarray, frame_count: int = None
-    ):
-        """
-        Save the processing results based on the configuration settings.
-
-        Args:
-            frame (np.ndarray): Original input frame.
-            seg_map (np.ndarray): Segmentation map.
-            frame_count (int, optional): Frame number for video processing.
-        """
-        output_path = self.config.get_output_path()
-
-        if self.config.save_raw_segmentation:
-            save_segmentation_map(seg_map, output_path, frame_count)
-
-        if self.config.save_colored_segmentation or self.config.save_overlay:
-            colored_seg = self.colorize_segmentation(seg_map)
-
-            if self.config.save_colored_segmentation:
-                save_colored_segmentation(colored_seg, output_path, frame_count)
-
-            if self.config.save_overlay:
-                alpha = self.config.visualization.alpha
-                overlay = cv2.addWeighted(frame, 1 - alpha, colored_seg.astype(np.float32), alpha, 0)
-                save_overlay(overlay.astype(np.uint8), output_path, frame_count)
-
-    def initialize_hdf5(self, shape):
+    def initialize_hdf5(self, shape: Tuple[int, ...]):
         """
         Initialize an HDF5 file for saving segmentation maps.
 
         Args:
-            shape: Shape of the dataset to be created in the HDF5 file.
+            shape (Tuple[int, ...]): Shape of the dataset to be created in the HDF5 file.
         """
         output_path = self.config.get_output_path()
         hdf5_path = output_path.with_name(f"{output_path.stem}_segmaps.h5")
@@ -224,13 +201,46 @@ class ProcessorBase(ABC):
         if self.hdf5_file:
             self.hdf5_file.close()
 
+    @abstractmethod
+    def save_results(
+        self, frame: np.ndarray, seg_map: np.ndarray, frame_count: int = None
+    ):
+        """
+        Save the processing results based on the configuration settings.
+
+        This method should be implemented by subclasses to handle saving results
+        specific to image or video processing.
+
+        Args:
+            frame (np.ndarray): Original input frame or image.
+            seg_map (np.ndarray): Segmentation map.
+            frame_count (int, optional): Frame number for video processing.
+        """
+        pass
+
 
 class ImageProcessor(ProcessorBase):
     """
     Processor class for handling single image inputs.
 
-    This class implements the processing pipeline for single image segmentation.
+    This class implements the processing pipeline for single image segmentation,
+    including loading the image, performing segmentation, saving results,
+    and generating analysis data.
+
+    Attributes:
+        Inherits all attributes from ProcessorBase.
     """
+
+    def __init__(self, model: SegmentationModelBase, config: Config):
+        """
+        Initialize the ImageProcessor.
+
+        Args:
+            model (SegmentationModelBase): The segmentation model to use.
+            config (Config): Configuration object.
+        """
+        super().__init__(model, config)
+        self.logger = logging.getLogger(__name__)
 
     def process(self):
         """
@@ -239,28 +249,85 @@ class ImageProcessor(ProcessorBase):
         This method handles loading the image, performing segmentation, saving results,
         and generating analysis data.
         """
-        input_path = self.config.input
+        self.logger.info(f"Starting image processing for {self.config.input}")
+
+        try:
+            frame = self.load_image()
+            seg_map = self.process_image(frame)
+            self.save_results(frame, seg_map)
+            self.analyze_results(seg_map)
+
+            self.logger.info(
+                f"Image processing complete. Output files saved with prefix: {self.config.get_output_path()}"
+            )
+        except Exception as e:
+            self.logger.exception(
+                f"An error occurred during image processing: {str(e)}"
+            )
+        finally:
+            self.close_hdf5()
+
+    def load_image(self) -> np.ndarray:
+        """
+        Load the input image file.
+
+        Returns:
+            np.ndarray: Loaded image as a NumPy array.
+
+        Raises:
+            IOError: If there's an error reading the input image.
+        """
+        frame = cv2.imread(str(self.config.input))
+        if frame is None:
+            raise IOError(f"Error reading input image: {self.config.input}")
+        return frame
+
+    def save_results(
+        self, frame: np.ndarray, seg_map: np.ndarray, frame_count: int = None
+    ):
+        """
+        Save the processing results based on the configuration settings.
+
+        Args:
+            frame (np.ndarray): Original input image.
+            seg_map (np.ndarray): Segmentation map.
+            frame_count (int, optional): Not used for single image processing, included for compatibility.
+        """
         output_path = self.config.get_output_path()
 
-        frame = cv2.imread(str(input_path))
-        if frame is None:
-            raise IOError(f"Error reading input image: {input_path}")
+        if self.config.save_raw_segmentation:
+            self.initialize_hdf5((1,) + seg_map.shape)
+            self.save_to_hdf5(seg_map, 0)
+            save_segmentation_map(seg_map, output_path)
 
-        seg_map = self.process_image(frame)
+        if self.config.save_colored_segmentation or self.config.save_overlay:
+            colored_seg = self.colorize_segmentation(seg_map)
 
-        self.initialize_hdf5((1,) + seg_map.shape)
-        self.save_to_hdf5(seg_map, 0)
-        self.save_results(frame, seg_map)
+            if self.config.save_colored_segmentation:
+                save_colored_segmentation(colored_seg, output_path)
 
+            if self.config.save_overlay:
+                alpha = self.config.visualization.alpha
+                overlay = cv2.addWeighted(
+                    frame, 1 - alpha, colored_seg.astype(np.float32), alpha, 0
+                )
+                save_overlay(overlay.astype(np.uint8), output_path)
+
+    def analyze_results(self, seg_map: np.ndarray):
+        """
+        Analyze the segmentation results and save the analysis data.
+
+        Args:
+            seg_map (np.ndarray): Segmentation map to analyze.
+        """
         analysis = analyze_segmentation_map(seg_map, self.model.num_categories)
+        output_path = self.config.get_output_path()
         self.counts_file, self.percentages_file = initialize_csv_files(
             output_path, self.model.category_names
         )
         append_to_csv_files(self.counts_file, self.percentages_file, 0, analysis)
-
-        self.close_hdf5()
-        logger.info(
-            f"Image processing complete. Output files saved with prefix: {output_path}"
+        self.logger.info(
+            f"Segmentation analysis complete. Results saved to {self.counts_file} and {self.percentages_file}"
         )
 
 
@@ -268,135 +335,214 @@ class VideoProcessor(ProcessorBase):
     """
     Processor class for handling video inputs.
 
-    This class implements the processing pipeline for video segmentation.
+    This class implements the processing pipeline for video segmentation, including
+    frame extraction, segmentation, analysis, and result saving.
+
+    Attributes:
+        model (SegmentationModelBase): The segmentation model to use for processing.
+        config (Config): Configuration object containing processing parameters.
+        video: OpenCV VideoCapture object for the input video.
+        fps (int): Frames per second of the input video.
+        width (int): Width of the video frames.
+        height (int): Height of the video frames.
+        total_frames (int): Total number of frames in the video.
+        processed_frames (int): Number of frames to be processed.
+        output_fps (int): Frames per second for the output video.
+        fourcc: FourCC code for video codec.
+        colored_output: VideoWriter for colored segmentation output.
+        overlay_output: VideoWriter for overlay output.
     """
 
-    def process(self):
-        logger = logging.getLogger(__name__)
+    def __init__(self, model: SegmentationModelBase, config: Config):
+        """
+        Initialize the VideoProcessor.
 
-        input_path = self.config.input
+        Args:
+            model (SegmentationModelBase): The segmentation model to use.
+            config (Config): Configuration object.
+        """
+        super().__init__(model, config)
+        self.video = None
+        self.fps = 0
+        self.width = 0
+        self.height = 0
+        self.total_frames = 0
+        self.processed_frames = 0
+        self.output_fps = 0
+        self.fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        self.colored_output = None
+        self.overlay_output = None
+        self.logger = logging.getLogger(__name__)
+
+    @contextmanager
+    def managed_video_processing(self):
+        """
+        Context manager for video processing resources.
+
+        This method handles the initialization and cleanup of resources used during
+        video processing, ensuring proper resource management and error handling.
+
+        Yields:
+            None
+        """
+        try:
+            self.initialize_resources()
+            yield
+        finally:
+            self.cleanup_resources()
+
+    def initialize_resources(self):
+        """
+        Initialize resources for video processing.
+
+        This method opens the input video file, initializes video properties,
+        and sets up output video writers and analysis files.
+        """
+        self.video = cv2.VideoCapture(str(self.config.input))
+        if not self.video.isOpened():
+            raise IOError(f"Error opening video file: {self.config.input}")
+
+        self.fps = int(self.video.get(cv2.CAP_PROP_FPS))
+        self.width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.total_frames = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.processed_frames = self.total_frames // self.config.frame_step
+        self.output_fps = max(1, self.fps // self.config.frame_step)
+
         output_path = self.config.get_output_path()
-        frame_step = self.config.frame_step
 
-        logger.info(f"Starting video processing for {input_path}")
-        logger.debug(
-            f"Configuration: save_colored_segmentation={self.config.save_colored_segmentation}, save_overlay={self.config.save_overlay}"
+        if self.config.save_raw_segmentation:
+            self.initialize_hdf5((self.processed_frames, self.height, self.width))
+
+        self.counts_file, self.percentages_file = initialize_csv_files(
+            output_path, self.model.category_names
+        )
+
+        if self.config.save_colored_segmentation:
+            self.colored_output = cv2.VideoWriter(
+                str(output_path.with_name(f"{output_path.stem}_colored.mp4")),
+                self.fourcc,
+                self.output_fps,
+                (self.width, self.height),
             )
 
-        perform_colorization = self.config.save_colored_segmentation or self.config.save_overlay
-        logger.info(f"Colorization will be {'performed' if perform_colorization else 'skipped'}")
+        if self.config.save_overlay:
+            self.overlay_output = cv2.VideoWriter(
+                str(output_path.with_name(f"{output_path.stem}_overlay.mp4")),
+                self.fourcc,
+                self.output_fps,
+                (self.width, self.height),
+            )
 
-        try:
-            video = cv2.VideoCapture(str(input_path))
-            if not video.isOpened():
-                raise IOError(f"Error opening video file: {input_path}")
+    def cleanup_resources(self):
+        """
+        Clean up resources used during video processing.
 
-            logger.debug("Video file opened successfully")
+        This method closes video files, writers, and other opened resources.
+        """
+        if self.video:
+            self.video.release()
+        if self.colored_output:
+            self.colored_output.release()
+        if self.overlay_output:
+            self.overlay_output.release()
+        cv2.destroyAllWindows()
+        self.close_hdf5()
 
-            fps = int(video.get(cv2.CAP_PROP_FPS))
-            width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    def frame_generator(self) -> Generator[Tuple[int, np.ndarray], None, None]:
+        """
+        Generate frames from the video at specified intervals.
 
-            logger.info(f"Video properties: FPS={fps}, Width={width}, Height={height}, Total Frames={total_frames}")
+        Yields:
+            Tuple[int, np.ndarray]: A tuple containing the frame count and the frame image.
+        """
+        frame_count = 0
+        while True:
+            ret, frame = self.video.read()
+            if not ret:
+                break
+            if frame_count % self.config.frame_step == 0:
+                yield frame_count, frame
+            frame_count += 1
 
-            processed_frames = total_frames // frame_step
-            output_fps = max(1, fps // frame_step)
+    def process_frame(self, frame_count: int, frame: np.ndarray):
+        """
+        Process a single video frame.
 
-            logger.info(f"Will process {processed_frames} frames at {output_fps} FPS")
+        This method handles the segmentation, analysis, and saving of results for a single frame.
 
-            if self.config.save_raw_segmentation:
-                logger.debug("Initializing HDF5 file for raw segmentation maps")
-                self.initialize_hdf5((processed_frames, height, width))
+        Args:
+            frame_count (int): The current frame number.
+            frame (np.ndarray): The frame image to process.
+        """
+        seg_map = self.process_image(frame)
 
-            logger.debug("Initializing CSV files for analysis")
-            self.counts_file, self.percentages_file = initialize_csv_files(
-                    output_path, self.model.category_names
-                    )
+        if self.config.save_raw_segmentation:
+            self.save_to_hdf5(seg_map, frame_count // self.config.frame_step)
 
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            colored_output = None
-            overlay_output = None
+        analysis = analyze_segmentation_map(seg_map, self.model.num_categories)
+        append_to_csv_files(
+            self.counts_file, self.percentages_file, frame_count, analysis
+        )
 
-            if perform_colorization:
-                if self.config.save_colored_segmentation:
-                    logger.debug("Creating colored segmentation video writer")
-                    colored_output = cv2.VideoWriter(
-                            str(output_path.with_name(f"{output_path.stem}_colored.mp4")),
-                            fourcc,
-                            output_fps,
-                            (width, height),
-                            )
+        self.save_results(frame, seg_map, frame_count)
 
-                if self.config.save_overlay:
-                    logger.debug("Creating overlay video writer")
-                    overlay_output = cv2.VideoWriter(
-                            str(output_path.with_name(f"{output_path.stem}_overlay.mp4")),
-                            fourcc,
-                            output_fps,
-                            (width, height),
-                            )
+    def save_results(
+        self, frame: np.ndarray, seg_map: np.ndarray, frame_count: int = None
+    ):
+        """
+        Save the processing results based on the configuration settings.
 
-            with tqdm(total=processed_frames, unit="frames", leave=False) as pbar:
-                for frame_idx, frame_count in enumerate(range(0, total_frames, frame_step)):
-                    logger.debug(f"Processing frame {frame_count}")
-                    video.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
-                    ret, frame = video.read()
-                    if not ret:
-                        logger.warning(f"Failed to read frame at position {frame_count}. Stopping processing.")
-                        break
+        Args:
+            frame (np.ndarray): Original input frame.
+            seg_map (np.ndarray): Segmentation map.
+            frame_count (int, optional): Frame number for video processing.
+        """
+        if self.config.save_colored_segmentation or self.config.save_overlay:
+            colored_seg = self.colorize_segmentation(seg_map)
 
-                    logger.debug("Performing segmentation")
-                    seg_map = self.process_image(frame)
+            if self.config.save_colored_segmentation:
+                self.colored_output.write(colored_seg.astype(np.uint8))
 
-                    if self.config.save_raw_segmentation:
-                        logger.debug("Saving raw segmentation map")
-                        self.save_to_hdf5(seg_map, frame_idx)
+            if self.config.save_overlay:
+                alpha = self.config.visualization.alpha
+                overlay = cv2.addWeighted(
+                    frame.astype(np.float64),
+                    1 - alpha,
+                    colored_seg.astype(np.float64),
+                    alpha,
+                    0,
+                ).astype(np.uint8)
+                self.overlay_output.write(overlay)
 
-                    logger.debug("Analyzing segmentation map")
-                    analysis = analyze_segmentation_map(seg_map, self.model.num_categories)
-                    append_to_csv_files(self.counts_file, self.percentages_file, frame_count, analysis)
+    def process(self):
+        """
+        Process the input video.
 
-                    if perform_colorization:
-                        logger.debug("Colorizing segmentation map")
-                        colored_seg = self.colorize_segmentation(seg_map)
+        This method orchestrates the entire video processing pipeline, including
+        frame extraction, segmentation, analysis, and result saving.
+        """
+        self.logger.info(f"Starting video processing for {self.config.input}")
 
-                        if self.config.save_colored_segmentation:
-                            logger.debug("Writing colored segmentation frame")
-                            colored_output.write(colored_seg.astype(np.uint8))
+        with self.managed_video_processing():
+            for frame_count, frame in tqdm(
+                self.frame_generator(),
+                total=self.processed_frames,
+                desc="Processing frames",
+            ):
+                try:
+                    self.process_frame(frame_count, frame)
+                except Exception as e:
+                    self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
+                    self.logger.debug("Error details:", exc_info=True)
 
-                        if self.config.save_overlay:
-                            logger.debug("Creating and writing overlay frame")
-                            alpha = self.config.visualization.alpha
-                            overlay = cv2.addWeighted(
-                                    frame.astype(np.float64),
-                                    1 - alpha,
-                                    colored_seg.astype(np.float64),
-                                    alpha,
-                                    0
-                                    ).astype(np.uint8)
-                            overlay_output.write(overlay)
-
-                    pbar.update(1)
-
-        except Exception as e:
-            logger.exception(f"An error occurred during video processing: {str(e)}")
-            raise
-
-        finally:
-            logger.debug("Cleaning up resources")
-            video.release()
-            if colored_output:
-                colored_output.release()
-            if overlay_output:
-                overlay_output.release()
-            cv2.destroyAllWindows()
-            self.close_hdf5()
-
-        self.generate_and_save_stats(output_path)
-
-        logger.info(f"Video processing complete. Output files saved with prefix: {output_path}")
-        logger.info(f"Processed {processed_frames} frames out of {total_frames} total frames.")
+        self.generate_and_save_stats(self.config.get_output_path())
+        self.logger.info(
+            f"Video processing complete. Output files saved with prefix: {self.config.get_output_path()}"
+        )
+        self.logger.info(
+            f"Processed {self.processed_frames} frames out of {self.total_frames} total frames."
+        )
 
     def generate_and_save_stats(self, output_path: Path):
         """
@@ -406,7 +552,7 @@ class VideoProcessor(ProcessorBase):
         and saves them to CSV files.
 
         Args:
-            output_prefix (Path): Prefix for output statistic files.
+            output_path (Path): Path for output statistic files.
         """
         counts_stats = generate_category_stats(self.counts_file)
         counts_stats.to_csv(
@@ -420,7 +566,7 @@ class VideoProcessor(ProcessorBase):
             index=False,
         )
 
-        logger.info(
+        self.logger.info(
             f"Category statistics generated and saved with prefix: {output_path.stem}"
         )
 
@@ -429,7 +575,13 @@ class DirectoryProcessor:
     """
     Processor class for handling directory inputs containing multiple video files.
 
-    This class manages the processing of multiple videos in a directory.
+    This class manages the processing of multiple videos in a directory, creating
+    a single output directory for all processed videos.
+
+    Attributes:
+        config (Config): Configuration object containing processing parameters.
+        model (SegmentationModelBase): The segmentation model to use for processing.
+        logger (logging.Logger): Logger for this class.
     """
 
     def __init__(self, config: Config):
@@ -437,10 +589,11 @@ class DirectoryProcessor:
         Initialize the DirectoryProcessor.
 
         Args:
-            config (Dict[str, Any]): Configuration dictionary for the processor.
+            config (Config): Configuration object for the processor.
         """
         self.config = config
         self.model = create_segmentation_model(config.model)
+        self.logger = logging.getLogger(__name__)
 
     def process(self):
         """
@@ -449,59 +602,112 @@ class DirectoryProcessor:
         This method discovers video files in the input directory and processes
         each video sequentially using the VideoProcessor.
         """
-        input_dir = self.config.input
-        video_files = get_video_files(input_dir)
+        self.logger.info(f"Starting directory processing for {self.config.input}")
 
+        video_files = self.get_video_files()
         if not video_files:
-            logger.warning(f"No video files found in directory: {input_dir}")
+            self.logger.warning(
+                f"No video files found in directory: {self.config.input}"
+            )
             return
 
-        # Create a single output directory for all videos
         output_dir = self.config.get_output_path()
+        self.logger.info(f"Output directory for all videos: {output_dir}")
 
         for video_file in tqdm(video_files, desc="Processing videos"):
-            video_config = Config(
-                input=video_file,
-                output_dir=output_dir,  # Use the same output directory for all videos
-                output_prefix=None,
-                model=self.config.model,
-                frame_step=self.config.frame_step,
-                save_raw_segmentation=self.config.save_raw_segmentation,
-                save_colored_segmentation=self.config.save_colored_segmentation,
-                save_overlay=self.config.save_overlay,
-                visualization=self.config.visualization,
-            )
-            self._process_single_video(video_config)
+            self.process_single_video(video_file, output_dir)
 
-        logger.info(f"Finished processing all videos in {input_dir}")
+        self.logger.info(f"Finished processing all videos in {self.config.input}")
 
-    def _process_single_video(self, video_config: Config):
+    def get_video_files(self) -> List[Path]:
+        """
+        Discover video files in the input directory.
+
+        Returns:
+            List[Path]: List of paths to discovered video files.
+        """
+        video_files = get_video_files(self.config.input)
+        self.logger.info(f"Found {len(video_files)} video files in {self.config.input}")
+        return video_files
+
+    def process_single_video(self, video_file: Path, output_dir: Path):
         """
         Process a single video file.
 
         Args:
-            video_config (Dict[str, Any]): Configuration for processing a single video.
+            video_file (Path): Path to the video file to process.
+            output_dir (Path): Directory to save the processing results.
         """
+        self.logger.info(f"Processing video: {video_file}")
+
+        video_config = self.create_video_config(video_file, output_dir)
+
         try:
             processor = VideoProcessor(self.model, video_config)
             processor.process()
         except Exception as e:
-            logger.error(f"Error processing video {video_config.input}: {str(e)}")
+            self.logger.error(f"Error processing video {video_file}: {str(e)}")
+            self.logger.debug("Error details:", exc_info=True)
+
+    def create_video_config(self, video_file: Path, output_dir: Path) -> Config:
+        """
+        Create a configuration object for processing a single video.
+
+        Args:
+            video_file (Path): Path to the video file to process.
+            output_dir (Path): Directory to save the processing results.
+
+        Returns:
+            Config: Configuration object for the video processor.
+        """
+        return Config(
+            input=video_file,
+            output_dir=output_dir,
+            output_prefix=None,
+            model=self.config.model,
+            frame_step=self.config.frame_step,
+            save_raw_segmentation=self.config.save_raw_segmentation,
+            save_colored_segmentation=self.config.save_colored_segmentation,
+            save_overlay=self.config.save_overlay,
+            visualization=self.config.visualization,
+        )
 
 
-def create_processor(config: Config) -> Union[ProcessorBase, DirectoryProcessor]:
+def create_processor(
+    config: Config,
+) -> Union[ImageProcessor, VideoProcessor, DirectoryProcessor]:
     """
     Factory function to create the appropriate processor based on the input file type.
 
+    This function examines the input type specified in the configuration and creates
+    the corresponding processor object. It handles single image inputs, single video
+    inputs, and directory inputs containing multiple videos.
+
     Args:
-        config (Dict[str, Any]): Configuration dictionary for the processor.
+        config (Config): Configuration object containing processing parameters.
 
     Returns:
-        Union[ProcessorBase, DirectoryProcessor]: An instance of either ImageProcessor,
-        VideoProcessor, or DirectoryProcessor.
+        Union[ImageProcessor, VideoProcessor, DirectoryProcessor]: An instance of either
+        ImageProcessor, VideoProcessor, or DirectoryProcessor, depending on the input type.
 
     Raises:
-        ValueError: If an unsupported input type is provided.
+        ValueError: If an unsupported input type is provided in the configuration.
+
+    Examples:
+        >>> config = Config(input="path/to/image.jpg", ...)
+        >>> processor = create_processor(config)
+        >>> isinstance(processor, ImageProcessor)
+        True
+
+        >>> config = Config(input="path/to/video.mp4", ...)
+        >>> processor = create_processor(config)
+        >>> isinstance(processor, VideoProcessor)
+        True
+
+        >>> config = Config(input="path/to/video/directory", ...)
+        >>> processor = create_processor(config)
+        >>> isinstance(processor, DirectoryProcessor)
+        True
     """
     if config.input_type == InputType.DIRECTORY:
         return DirectoryProcessor(config)
@@ -509,5 +715,7 @@ def create_processor(config: Config) -> Union[ProcessorBase, DirectoryProcessor]
         model = create_segmentation_model(config.model)
         if config.input_type == InputType.SINGLE_VIDEO:
             return VideoProcessor(model, config)
-        else:  # SINGLE_IMAGE
+        elif config.input_type == InputType.SINGLE_IMAGE:
             return ImageProcessor(model, config)
+        else:
+            raise ValueError(f"Unsupported input type: {config.input_type}")
