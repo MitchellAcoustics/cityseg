@@ -5,7 +5,7 @@ from pathlib import Path
 
 from cityscape_seg.config import Config
 from cityscape_seg.processors import create_processor
-
+from cityscape_seg.exceptions import ConfigurationError, ProcessingError, ModelError, InputError
 
 def setup_logging(log_level):
     """
@@ -97,11 +97,26 @@ def main():
 
         logger.info(f"Configuration loaded: {config.to_dict()}")
 
-        processor = create_processor(config)
-        processor.process()
+        try:
+            processor = create_processor(config)
+        except Exception as e:
+            raise ConfigurationError(f"Error creating processor: {str(e)}")
 
+        try:
+            processor.process()
+        except Exception as e:
+            raise ProcessingError(f"Error during processing: {str(e)}")
+
+    except ConfigurationError as e:
+        logger.error(f"Configuration error: {str(e)}")
+    except ProcessingError as e:
+        logger.error(f"Processing error: {str(e)}")
+    except ModelError as e:
+        logger.error(f"Model error: {str(e)}")
+    except InputError as e:
+        logger.error(f"Input error: {str(e)}")
     except Exception as e:
-        logger.exception(f"An error occurred during processing: {str(e)}")
+        logger.exception(f"Unexpected error: {str(e)}")
     finally:
         logger.info("Processing complete.")
 

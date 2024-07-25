@@ -14,6 +14,7 @@ from transformers import (
 from .config import ModelConfig
 from .palettes import ADE20K_PALETTE, CITYSCAPES_PALETTE
 from .utils import get_device
+from .exceptions import ModelError
 
 logger = logging.getLogger(__name__)
 
@@ -205,8 +206,11 @@ class BeitSegmentationModel(SegmentationModelBase):
     """
 
     def load_model(self):
-        model = BeitForSemanticSegmentation.from_pretrained(self.model_config.name)
-        return self.move_model_to_device(model)
+        try:
+            model = BeitForSemanticSegmentation.from_pretrained(self.model_config.name)
+            return self.move_model_to_device(model)
+        except Exception as e:
+            raise ModelError(f"Error loading BEIT model: {str(e)}")
 
     def load_processor(self):
         return BeitImageProcessor.from_pretrained(self.model_config.name)
@@ -232,10 +236,13 @@ class OneFormerSegmentationModel(SegmentationModelBase):
     """
 
     def load_model(self):
-        model = OneFormerForUniversalSegmentation.from_pretrained(
-            self.model_config.name
-        )
-        return self.move_model_to_device(model)
+        try:
+            model = OneFormerForUniversalSegmentation.from_pretrained(
+                self.model_config.name
+            )
+            return self.move_model_to_device(model)
+        except Exception as e:
+            raise ModelError(f"Error loading OneFormer model: {str(e)}")
 
     def load_processor(self):
         return OneFormerProcessor.from_pretrained(self.model_config.name)
@@ -269,9 +276,12 @@ def create_segmentation_model(model_config: ModelConfig) -> SegmentationModelBas
     """
 
     model_type = model_config.type.lower()
-    if model_type == "beit":
-        return BeitSegmentationModel(model_config)
-    elif model_type == "oneformer":
-        return OneFormerSegmentationModel(model_config)
-    else:
-        raise ValueError(f"Unsupported model type: {model_type}")
+    try:
+        if model_type == "beit":
+            return BeitSegmentationModel(model_config)
+        elif model_type == "oneformer":
+            return OneFormerSegmentationModel(model_config)
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+    except Exception as e:
+        raise ModelError(f"Error creating segmentation model: {str(e)}")

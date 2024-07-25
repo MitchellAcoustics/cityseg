@@ -24,6 +24,7 @@ from .utils import (
     save_overlay,
     save_segmentation_map,
 )
+from .exceptions import ConfigurationError, ProcessingError, ModelError, InputError
 
 logger = logging.getLogger(__name__)
 
@@ -260,10 +261,10 @@ class ImageProcessor(ProcessorBase):
             self.logger.info(
                 f"Image processing complete. Output files saved with prefix: {self.config.get_output_path()}"
             )
-        except Exception as e:
-            self.logger.exception(
-                f"An error occurred during image processing: {str(e)}"
-            )
+        except IOError as e:
+            raise InputError(f"Error loading input image: {str(e)}")
+        except ProcessingError as e:
+            raise ProcessingError(f"Error during image processing: {str(e)}")
         finally:
             self.close_hdf5()
 
@@ -524,25 +525,30 @@ class VideoProcessor(ProcessorBase):
         """
         self.logger.info(f"Starting video processing for {self.config.input}")
 
-        with self.managed_video_processing():
-            for frame_count, frame in tqdm(
-                self.frame_generator(),
-                total=self.processed_frames,
-                desc="Processing frames",
-            ):
-                try:
-                    self.process_frame(frame_count, frame)
-                except Exception as e:
-                    self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
-                    self.logger.debug("Error details:", exc_info=True)
+        try:
+            with self.managed_video_processing():
+                for frame_count, frame in tqdm(
+                    self.frame_generator(),
+                    total=self.processed_frames,
+                    desc="Processing frames",
+                ):
+                    try:
+                        self.process_frame(frame_count, frame)
+                    except Exception as e:
+                        self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
+                        self.logger.debug("Error details:", exc_info=True)
 
-        self.generate_and_save_stats(self.config.get_output_path())
-        self.logger.info(
-            f"Video processing complete. Output files saved with prefix: {self.config.get_output_path()}"
-        )
-        self.logger.info(
-            f"Processed {self.processed_frames} frames out of {self.total_frames} total frames."
-        )
+            self.generate_and_save_stats(self.config.get_output_path())
+            self.logger.info(
+                f"Video processing complete. Output files saved with prefix: {self.config.get_output_path()}"
+            )
+            self.logger.info(
+                f"Processed {self.processed_frames} frames out of {self.total_frames} total frames."
+            )
+        except IOError as e:
+            raise InputError(f"Error reading input video: {str(e)}")
+        except ProcessingError as e:
+            raise ProcessingError(f"Error during video processing: {str(e)}")
 
     def generate_and_save_stats(self, output_path: Path):
         """
@@ -606,16 +612,17 @@ class DirectoryProcessor:
 
         video_files = self.get_video_files()
         if not video_files:
-            self.logger.warning(
-                f"No video files found in directory: {self.config.input}"
-            )
-            return
+            raise InputError(f"No video files found in directory: {self.config.input}")
 
         output_dir = self.config.get_output_path()
         self.logger.info(f"Output directory for all videos: {output_dir}")
 
         for video_file in tqdm(video_files, desc="Processing videos"):
-            self.process_single_video(video_file, output_dir)
+            try:
+                self.process_single_video(video_file, output_dir)
+            except Exception as e:
+                self.logger.error(f"Error processing video {video_file}: {str(e)}")
+                self.logger.debug("Error details:", exc_info=True)
 
         self.logger.info(f"Finished processing all videos in {self.config.input}")
 
@@ -712,10 +719,14 @@ def create_processor(
     if config.input_type == InputType.DIRECTORY:
         return DirectoryProcessor(config)
     else:
-        model = create_segmentation_model(config.model)
+        try:
+            model = create_segmentation_model(config.model)
+        except ValueError as e:
+            raise ModelError(f"Error creating segmentation model: {str(e)}")
+
         if config.input_type == InputType.SINGLE_VIDEO:
             return VideoProcessor(model, config)
         elif config.input_type == InputType.SINGLE_IMAGE:
             return ImageProcessor(model, config)
         else:
-            raise ValueError(f"Unsupported input type: {config.input_type}")
+            raise ConfigurationError(f"Unsupported input type: {config.input_type}")
