@@ -56,7 +56,7 @@ class SegmentationModelBase(ABC):
 
     def __init__(self, model_config: ModelConfig):
         self.model_config = model_config
-        self.device = get_device()
+        self.device = get_device(model_config.device)
         self.mixed_precision = model_config.mixed_precision
         self.max_size = model_config.max_size
         self.tile_size = model_config.tile_size
@@ -265,6 +265,9 @@ class OneFormerSegmentationModel(SegmentationModelBase):
 
     def load_model(self):
         self.logger.info("Loading OneFormer model", model_name=self.model_config.name)
+        if "dinat" in self.model_config.name and self.device.type == "mps":
+            self.device = get_device("cpu")
+            self.logger.info("Forcing CPU for DINAT model")
         try:
             model = OneFormerForUniversalSegmentation.from_pretrained(
                 self.model_config.name

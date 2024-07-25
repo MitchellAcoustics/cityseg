@@ -14,13 +14,22 @@ from .palettes import ADE20K_PALETTE, CITYSCAPES_PALETTE
 logger = logging.getLogger(__name__)
 
 
-def get_device():
+def get_device(device: str) -> torch.device:
     """
     Determine the appropriate device (CUDA, MPS, or CPU) for running computations.
 
     Returns:
         torch.device: The selected device.
     """
+    if device is not None:
+        if device.lower() == "cuda":
+            return torch.device("cuda")
+        elif device.lower() == "mps":
+            return torch.device("mps")
+        elif device.lower() == "cpu":
+            return torch.device("cpu")
+        else:
+            raise ValueError(f"Unknown device: {device}")
 
     if torch.cuda.is_available():
         return torch.device("cuda")

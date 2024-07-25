@@ -7,6 +7,7 @@ model:
   max_size: null  # Set to null to maintain original resolution
   tile_size: null  # Set to null to disable tiling
   mixed_precision: true
+  device: mps
 frame_step: 50  # Process every 5th frame
 save_raw_segmentation: true
 save_colored_segmentation: false

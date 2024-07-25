@@ -32,6 +32,7 @@ class ModelConfig:
     max_size: Optional[int] = None
     tile_size: Optional[int] = None
     mixed_precision: bool = False
+    device: str = None
 
 
 @dataclass

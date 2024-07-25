@@ -38,6 +38,7 @@ dev-dependencies = [
     "jupyter>=1.0.0",
     "pytest>=8.3.2",
     "rich[jupyter]>=13.7.1",
+    "natten==0.17.1",
 ]
 
 [tool.hatch.metadata]
