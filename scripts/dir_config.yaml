@@ -1,4 +1,5 @@
 input: example_inputs
+#output_dir: output
 model:
   type: oneformer
   name: shi-labs/oneformer_ade20k_swin_large
@@ -6,5 +7,10 @@ model:
   max_size: null  # Set to null to maintain original resolution
   tile_size: null  # Set to null to disable tiling
   mixed_precision: true
-frame_step: 5  # Process every 5th frame
-num_workers: 1
+frame_step: 10  # Process every 5th frame
+generate_overlay: true
+save_colored_segmentation: true
+save_raw_segmentation: true
+visualization:
+  alpha: 0.5
+  colormap: default

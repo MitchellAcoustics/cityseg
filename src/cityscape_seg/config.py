@@ -1,8 +1,15 @@
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from enum import Enum
 from typing import Any, Dict, Optional, Union
 
 import yaml
+
+
+class InputType(Enum):
+    SINGLE_IMAGE = "single_image"
+    SINGLE_VIDEO = "single_video"
+    DIRECTORY = "directory"
 
 
 @dataclass
@@ -51,7 +58,6 @@ class Config:
         output_prefix (Path): Prefix for output file paths.
         model (ModelConfig): Configuration for the segmentation model.
         frame_step (int): Number of frames to skip in video processing.
-        num_workers (int): Number of parallel workers for directory processing.
         generate_overlay (bool): Whether to generate an overlay of the segmentation on the original image.
         save_colored_segmentation (bool): Whether to save the colored segmentation map.
         save_raw_segmentation (bool): Whether to save the raw segmentation map (as numpy array).
@@ -59,32 +65,44 @@ class Config:
     """
 
     input: Union[Path, str]
-    output_prefix: Path
+    output_dir: Optional[Path]
+    output_prefix: Optional[str]
     model: ModelConfig
     frame_step: int = 1
-    num_workers: int = 1
     generate_overlay: bool = True
     save_colored_segmentation: bool = True
     save_raw_segmentation: bool = True
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
+    input_type: InputType = field(init=False)
 
     def __post_init__(self):
-        """
-        Post-initialization method to set default output prefix if not provided.
-        """
-        if self.output_prefix is None:
-            self.output_prefix = self.generate_output_prefix()
+        self.input = Path(self.input)
+        self.input_type = self._determine_input_type()
 
-    def generate_output_prefix(self) -> Path:
+    def _determine_input_type(self) -> InputType:
+        if self.input.is_dir():
+            return InputType.DIRECTORY
+        elif self.input.suffix.lower() in [".mp4", ".avi", ".mov"]:
+            return InputType.SINGLE_VIDEO
+        elif self.input.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+            return InputType.SINGLE_IMAGE
+        else:
+            raise ValueError(f"Unsupported input type: {self.input}")
+
+    def generate_output_prefix(self) -> str:
         """
         Generate a default output prefix based on input file and model configuration.
 
         Returns:
-            Path: Generated output prefix path.
+            str: Generated output prefix.
         """
-        # TODO: Still not creating output dir correctly for dir processing
-        input_path = Path(self.input)
-        name = input_path.name if input_path.is_dir() else input_path.stem.split("_")[0]
+        if self.input_type == InputType.DIRECTORY:
+            name = self.input.name
+        else:
+            name = self.input.stem.split("_")[
+                0
+            ]  # Use only the first part of the filename
+
         model_type = self.model.type
         dataset = self.model.dataset
         base_name = f"{name}_{model_type}_{dataset}_step{self.frame_step}"
@@ -92,9 +110,41 @@ class Config:
         if self.model.tile_size:
             base_name += f"_tile{self.model.tile_size}"
 
-        output_dir = input_path.parent / "output" / base_name
-        output_dir.mkdir(parents=True, exist_ok=True)
-        return output_dir
+        return base_name
+
+    def get_output_path(self) -> Path:
+        """
+        Get the full output path based on output_dir, output_prefix, and input type.
+
+        Returns:
+            Path: Full output path.
+        """
+        if self.output_dir is None:
+            self.output_dir = self.input.parent / "output"
+        elif not Path(self.output_dir).is_absolute():
+            self.output_dir = self.input.parent / self.output_dir
+
+        self.output_dir = self.output_dir.resolve()
+
+        # For directory processing, create a single subdirectory for all outputs
+        if self.input_type == InputType.DIRECTORY:
+            model_type = self.model.type
+            dataset = self.model.dataset
+            subdir_name = f"{model_type}_{dataset}_step{self.frame_step}"
+            if self.model.tile_size:
+                subdir_name += f"_tile{self.model.tile_size}"
+            self.output_dir = self.output_dir / subdir_name
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.input_type == InputType.DIRECTORY:
+            return self.output_dir
+
+        prefix = self.output_prefix or self.generate_output_prefix()
+        if self.input_type == InputType.SINGLE_IMAGE:
+            return self.output_dir / f"{prefix}{self.input.suffix}"
+        else:  # SINGLE_VIDEO
+            return self.output_dir / f"{prefix}.mp4"
 
     @classmethod
     def from_yaml(cls, config_path: Path) -> "Config":
@@ -115,10 +165,12 @@ class Config:
 
         return cls(
             input=Path(config_dict["input"]),
-            output_prefix=Path(config_dict.get("output_prefix", "")),
+            output_dir=Path(config_dict.get("output_dir", ""))
+            if config_dict.get("output_dir")
+            else None,
+            output_prefix=config_dict.get("output_prefix"),
             model=model_config,
             frame_step=config_dict.get("frame_step", 1),
-            num_workers=config_dict.get("num_workers", 1),
             generate_overlay=config_dict.get("generate_overlay", True),
             save_colored_segmentation=config_dict.get(
                 "save_colored_segmentation", True
@@ -134,14 +186,16 @@ class Config:
         Returns:
             Dict[str, Any]: Dictionary representation of the Config.
         """
-        return {
+        config_dict = {
             "input": str(self.input),
-            "output_prefix": str(self.output_prefix),
+            "output_dir": str(self.output_dir) if self.output_dir else None,
+            "output_prefix": self.output_prefix,
             "model": asdict(self.model),
             "frame_step": self.frame_step,
-            "num_workers": self.num_workers,
             "generate_overlay": self.generate_overlay,
             "save_colored_segmentation": self.save_colored_segmentation,
             "save_raw_segmentation": self.save_raw_segmentation,
             "visualization": asdict(self.visualization),
+            "input_type": self.input_type.value,
         }
+        return config_dict

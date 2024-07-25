@@ -3,9 +3,8 @@ import logging
 import sys
 from pathlib import Path
 
-from .config import Config
-from .models import create_segmentation_model
-from .processors import create_processor
+from cityscape_seg.config import Config
+from cityscape_seg.processors import create_processor
 
 
 def setup_logging():
@@ -69,16 +68,19 @@ def main():
         help="Path to input image, video, or directory (overrides config file)",
     )
     parser.add_argument(
-        "--output", type=str, help="Path to output prefix (overrides config file)"
+        "--output_dir",
+        type=str,
+        help="Path to output directory (overrides config file)",
+    )
+    parser.add_argument(
+        "--output_prefix",
+        type=str,
+        help="Prefix for output files (overrides config file)",
     )
     parser.add_argument(
         "--frame_step", type=int, help="Process every nth frame (overrides config file)"
     )
-    parser.add_argument(
-        "--num_workers",
-        type=int,
-        help="Number of parallel workers for directory processing (overrides config file)",
-    )
+
     args = parser.parse_args()
 
     try:
@@ -89,18 +91,18 @@ def main():
             config.input = Path(args.input)
         if args.frame_step:
             config.frame_step = args.frame_step
-        if args.output:
-            config.output_prefix = Path(args.output)
-        if args.num_workers:
-            config.num_workers = args.num_workers
+        if args.output_dir:
+            config.output_dir = Path(args.output_dir)
+        if args.output_prefix:
+            config.output_prefix = args.output_prefix
 
         # Input validation
-        if not Path(config.input).exists():
+        if not config.input.exists():
             raise FileNotFoundError(f"Input path not found: {config.input}")
 
         logger.info(f"Configuration loaded: {config.to_dict()}")
 
-        processor = create_processor(config.to_dict())
+        processor = create_processor(config)
         processor.process()
 
     except Exception as e:

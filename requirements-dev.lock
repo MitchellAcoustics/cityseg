@@ -91,6 +91,8 @@ idna==3.7
     # via httpx
     # via jsonschema
     # via requests
+iniconfig==2.0.0
+    # via pytest
 ipykernel==6.29.5
     # via jupyter
     # via jupyter-console
@@ -265,6 +267,7 @@ packaging==24.1
     # via jupytext
     # via mkdocs
     # via nbconvert
+    # via pytest
     # via qtconsole
     # via qtpy
     # via transformers
@@ -287,6 +290,8 @@ platformdirs==4.2.2
     # via jupyter-core
     # via mkdocs-get-deps
     # via mkdocstrings
+pluggy==1.5.0
+    # via pytest
 prometheus-client==0.20.0
     # via jupyter-server
 prompt-toolkit==3.0.47
@@ -311,6 +316,7 @@ pygments==2.18.0
 pymdown-extensions==10.8.1
     # via mkdocs-material
     # via mkdocstrings
+pytest==8.3.2
 python-dateutil==2.9.0.post0
     # via arrow
     # via ghp-import

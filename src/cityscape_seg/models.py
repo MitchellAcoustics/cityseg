@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import List, Tuple
 
 import torch
 from torch.cuda.amp import autocast
@@ -11,6 +11,7 @@ from transformers import (
     OneFormerProcessor,
 )
 
+from .config import ModelConfig
 from .palettes import ADE20K_PALETTE, CITYSCAPES_PALETTE
 from .utils import get_device
 
@@ -38,13 +39,13 @@ class SegmentationModelBase(ABC):
         palette (List[Tuple[int, int, int]]): Color palette for visualization.
     """
 
-    def __init__(self, model_config: Dict[str, Any]):
+    def __init__(self, model_config: ModelConfig):
         self.model_config = model_config
         self.device = get_device()
-        self.mixed_precision = model_config.get("mixed_precision", False)
-        self.max_size = model_config.get("max_size")
-        self.tile_size = model_config.get("tile_size")
-        self.dataset = model_config["dataset"].lower()
+        self.mixed_precision = model_config.mixed_precision
+        self.max_size = model_config.max_size
+        self.tile_size = model_config.tile_size
+        self.dataset = model_config.dataset.lower()
 
         self.model = self.load_model()
         self.processor = self.load_processor()
@@ -204,11 +205,11 @@ class BeitSegmentationModel(SegmentationModelBase):
     """
 
     def load_model(self):
-        model = BeitForSemanticSegmentation.from_pretrained(self.model_config["name"])
+        model = BeitForSemanticSegmentation.from_pretrained(self.model_config.name)
         return self.move_model_to_device(model)
 
     def load_processor(self):
-        return BeitImageProcessor.from_pretrained(self.model_config["name"])
+        return BeitImageProcessor.from_pretrained(self.model_config.name)
 
     def get_category_names(self):
         return {int(k): v for k, v in self.model.config.id2label.items()}
@@ -232,12 +233,12 @@ class OneFormerSegmentationModel(SegmentationModelBase):
 
     def load_model(self):
         model = OneFormerForUniversalSegmentation.from_pretrained(
-            self.model_config["name"]
+            self.model_config.name
         )
         return self.move_model_to_device(model)
 
     def load_processor(self):
-        return OneFormerProcessor.from_pretrained(self.model_config["name"])
+        return OneFormerProcessor.from_pretrained(self.model_config.name)
 
     def get_category_names(self):
         return {int(k): v for k, v in self.model.config.id2label.items()}
@@ -253,7 +254,7 @@ class OneFormerSegmentationModel(SegmentationModelBase):
         )[0]
 
 
-def create_segmentation_model(model_config: Dict[str, Any]) -> SegmentationModelBase:
+def create_segmentation_model(model_config: ModelConfig) -> SegmentationModelBase:
     """
     Factory function to create the appropriate segmentation model based on the configuration.
 
@@ -267,7 +268,7 @@ def create_segmentation_model(model_config: Dict[str, Any]) -> SegmentationModel
         ValueError: If an unsupported model type is specified in the configuration.
     """
 
-    model_type = model_config["type"].lower()
+    model_type = model_config.type.lower()
     if model_type == "beit":
         return BeitSegmentationModel(model_config)
     elif model_type == "oneformer":
