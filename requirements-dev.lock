@@ -105,6 +105,7 @@ ipython==8.26.0
     # via jupyter-console
 ipywidgets==8.1.3
     # via jupyter
+    # via rich
 isoduration==20.11.0
     # via jsonschema
 jedi==0.19.1
@@ -172,6 +173,8 @@ jupytext==1.16.3
     # via mkdocs-jupyter
 llvmlite==0.43.0
     # via numba
+loguru==0.7.2
+    # via cityscape-seg
 markdown==3.6
     # via mkdocs
     # via mkdocs-autorefs
@@ -181,6 +184,7 @@ markdown==3.6
 markdown-it-py==3.0.0
     # via jupytext
     # via mdit-py-plugins
+    # via rich
 markupsafe==2.1.5
     # via jinja2
     # via mkdocs
@@ -313,6 +317,7 @@ pygments==2.18.0
     # via mkdocs-material
     # via nbconvert
     # via qtconsole
+    # via rich
 pymdown-extensions==10.8.1
     # via mkdocs-material
     # via mkdocstrings
@@ -366,6 +371,7 @@ rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
     # via jsonschema
     # via jupyter-events
+rich==13.7.1
 rpds-py==0.19.1
     # via jsonschema
     # via referencing

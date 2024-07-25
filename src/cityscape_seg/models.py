@@ -3,7 +3,9 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple
 
 import torch
+from loguru import logger
 from torch.cuda.amp import autocast
+from tqdm.auto import tqdm
 from transformers import (
     BeitForSemanticSegmentation,
     BeitImageProcessor,
@@ -12,11 +14,23 @@ from transformers import (
 )
 
 from .config import ModelConfig
+from .exceptions import ModelError
 from .palettes import ADE20K_PALETTE, CITYSCAPES_PALETTE
 from .utils import get_device
-from .exceptions import ModelError
 
-logger = logging.getLogger(__name__)
+
+class TqdmCompatibleSink:
+    def __init__(self, level=logging.INFO):
+        self.level = level
+
+    def write(self, message):
+        tqdm.write(message, end="")
+
+
+# Configure loguru
+logger.remove()  # Remove default handler
+logger.add(TqdmCompatibleSink(), format="{time} | {level} | {message}", level="INFO")
+logger.add("file_{time}.log", rotation="1 day")
 
 
 class SegmentationModelBase(ABC):
@@ -48,11 +62,22 @@ class SegmentationModelBase(ABC):
         self.tile_size = model_config.tile_size
         self.dataset = model_config.dataset.lower()
 
+        self.logger = logger.bind(model_type=self.__class__.__name__)
+
         self.model = self.load_model()
         self.processor = self.load_processor()
         self.category_names = self.get_category_names()
         self.num_categories = len(self.category_names)
         self.palette = self.get_palette()
+
+        self.logger.info(
+            "Model initialized",
+            device=str(self.device),
+            mixed_precision=self.mixed_precision,
+            max_size=self.max_size,
+            tile_size=self.tile_size,
+            dataset=self.dataset,
+        )
 
     @abstractmethod
     def load_model(self):
@@ -138,7 +163,7 @@ class SegmentationModelBase(ABC):
         Returns:
             The processed segmentation map for the tile.
         """
-
+        self.logger.debug("Processing tile", tile_size=tile.size)
         inputs = self.process_inputs(tile)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
@@ -148,7 +173,8 @@ class SegmentationModelBase(ABC):
         else:
             outputs = self.model(**inputs)
 
-        return self.post_process(outputs, tile.size)
+        result = self.post_process(outputs, tile.size)
+        return result
 
     @abstractmethod
     def post_process(self, outputs, target_size):
@@ -206,11 +232,13 @@ class BeitSegmentationModel(SegmentationModelBase):
     """
 
     def load_model(self):
+        self.logger.info("Loading BEiT model", model_name=self.model_config.name)
         try:
             model = BeitForSemanticSegmentation.from_pretrained(self.model_config.name)
             return self.move_model_to_device(model)
         except Exception as e:
-            raise ModelError(f"Error loading BEIT model: {str(e)}")
+            self.logger.error("Error loading BEiT model", error=str(e))
+            raise ModelError(f"Error loading BEiT model: {str(e)}")
 
     def load_processor(self):
         return BeitImageProcessor.from_pretrained(self.model_config.name)
@@ -236,12 +264,14 @@ class OneFormerSegmentationModel(SegmentationModelBase):
     """
 
     def load_model(self):
+        self.logger.info("Loading OneFormer model", model_name=self.model_config.name)
         try:
             model = OneFormerForUniversalSegmentation.from_pretrained(
                 self.model_config.name
             )
             return self.move_model_to_device(model)
         except Exception as e:
+            self.logger.error("Error loading OneFormer model", error=str(e))
             raise ModelError(f"Error loading OneFormer model: {str(e)}")
 
     def load_processor(self):
@@ -276,6 +306,7 @@ def create_segmentation_model(model_config: ModelConfig) -> SegmentationModelBas
     """
 
     model_type = model_config.type.lower()
+    logger.info("Creating segmentation model", model_type=model_type)
     try:
         if model_type == "beit":
             return BeitSegmentationModel(model_config)
@@ -284,4 +315,5 @@ def create_segmentation_model(model_config: ModelConfig) -> SegmentationModelBas
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
     except Exception as e:
+        logger.error("Error creating segmentation model", error=str(e))
         raise ModelError(f"Error creating segmentation model: {str(e)}")

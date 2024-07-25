@@ -1,47 +1,44 @@
 import argparse
-import logging
-from tqdm import tqdm
+import warnings
 from pathlib import Path
 
 from cityscape_seg.config import Config
+from cityscape_seg.exceptions import (
+    ConfigurationError,
+    InputError,
+    ModelError,
+    ProcessingError,
+)
 from cityscape_seg.processors import create_processor
-from cityscape_seg.exceptions import ConfigurationError, ProcessingError, ModelError, InputError
+from loguru import logger
+from tqdm import tqdm
 
-def setup_logging(log_level):
-    """
-    Set up logging configuration for the application.
 
-    Args:
-        log_level (str): Desired logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+class TqdmCompatibleSink:
+    def __init__(self, compact=True):
+        self.compact = compact
 
-    Returns:
-        logging.Logger: Configured logger object.
-    """
-    numeric_level = getattr(logging, log_level.upper(), None)
-    if not isinstance(numeric_level, int):
-        raise ValueError(f"Invalid log level: {log_level}")
+    def write(self, message):
+        tqdm.write(message, end="")
 
-    class TqdmLoggingHandler(logging.Handler):
-        def emit(self, record):
-            try:
-                msg = self.format(record)
-                tqdm.write(msg)
-                self.flush()
-            except Exception:
-                self.handleError(record)
 
-    logging.basicConfig(
-        level=numeric_level,
-        format="%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s",
-        handlers=[
-            TqdmLoggingHandler(),
-            logging.FileHandler("segmentation.log"),
-        ],
+def setup_logging(log_level, verbose=False):
+    logger.remove()  # Remove default handler
+
+    # Console logging
+    console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    logger.add(
+        TqdmCompatibleSink(compact=not verbose),
+        format=console_format,
+        level=log_level,
+        colorize=True,
     )
-    return logging.getLogger(__name__)
+
+    # File logging (always verbose, JSON format)
+    logger.add("segmentation.log", format="{message}", level="DEBUG", serialize=True)
 
 
-def main():
+def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Semantic Segmentation for High-Resolution Images and Videos"
     )
@@ -73,10 +70,15 @@ def main():
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level",
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
-    logger = setup_logging(args.log_level)
+@logger.catch
+def main():
+    args = parse_arguments()
+    setup_logging(args.log_level, args.verbose)
+    logger.info(f"Starting segmentation process with input: {args.input}")
 
     try:
         config = Config.from_yaml(Path(args.config))
@@ -93,19 +95,12 @@ def main():
 
         # Input validation
         if not config.input.exists():
-            raise FileNotFoundError(f"Input path not found: {config.input}")
+            raise InputError(f"Input path not found: {config.input}")
 
-        logger.info(f"Configuration loaded: {config.to_dict()}")
+        logger.info("Configuration loaded", config=config.to_dict())
 
-        try:
-            processor = create_processor(config)
-        except Exception as e:
-            raise ConfigurationError(f"Error creating processor: {str(e)}")
-
-        try:
-            processor.process()
-        except Exception as e:
-            raise ProcessingError(f"Error during processing: {str(e)}")
+        processor = create_processor(config)
+        processor.process()
 
     except ConfigurationError as e:
         logger.error(f"Configuration error: {str(e)}")
@@ -122,4 +117,5 @@ def main():
 
 
 if __name__ == "__main__":
+    warnings.filterwarnings("ignore")
     main()

@@ -1,17 +1,19 @@
 import logging
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Union, Generator, Tuple, List
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Generator, List, Tuple, Union
 
 import cv2
 import h5py
 import numpy as np
 import torch
+from loguru import logger
 from PIL import Image
 from tqdm.auto import tqdm
 
 from .config import Config, InputType
+from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
 from .models import SegmentationModelBase, create_segmentation_model
 from .utils import (
     analyze_segmentation_map,
@@ -24,9 +26,21 @@ from .utils import (
     save_overlay,
     save_segmentation_map,
 )
-from .exceptions import ConfigurationError, ProcessingError, ModelError, InputError
 
-logger = logging.getLogger(__name__)
+
+# Custom sink for tqdm compatibility
+class TqdmCompatibleSink:
+    def __init__(self, level=logging.INFO):
+        self.level = level
+
+    def write(self, message):
+        tqdm.write(message, end="")
+
+
+# Configure loguru
+logger.remove()  # Remove default handler
+logger.add(TqdmCompatibleSink(), format="{time} | {level} | {message}", level="INFO")
+logger.add("file_{time}.log", rotation="1 day")
 
 
 class ProcessorBase(ABC):
@@ -60,6 +74,10 @@ class ProcessorBase(ABC):
         self.percentages_file = None
         self.colormap = get_colormap(
             self.config.visualization.colormap, self.model.num_categories
+        )
+        self.logger = logger.bind(
+            processor_type=self.__class__.__name__,
+            input_type=self.config.input_type.value,
         )
 
     @abstractmethod
@@ -241,7 +259,7 @@ class ImageProcessor(ProcessorBase):
             config (Config): Configuration object.
         """
         super().__init__(model, config)
-        self.logger = logging.getLogger(__name__)
+        self.logger = self.logger.bind(output_path=str(self.config.get_output_path()))
 
     def process(self):
         """
@@ -254,16 +272,24 @@ class ImageProcessor(ProcessorBase):
 
         try:
             frame = self.load_image()
+            self.logger.debug("Image loaded", shape=frame.shape)
+
             seg_map = self.process_image(frame)
+            self.logger.debug("Segmentation completed", seg_map_shape=seg_map.shape)
+
             self.save_results(frame, seg_map)
             self.analyze_results(seg_map)
 
             self.logger.info(
-                f"Image processing complete. Output files saved with prefix: {self.config.get_output_path()}"
+                "Image processing complete",
+                output_path=str(self.config.get_output_path()),
             )
+
         except IOError as e:
+            self.logger.exception(f"Error loading input image: {str(e)}")
             raise InputError(f"Error loading input image: {str(e)}")
         except ProcessingError as e:
+            self.logger.exception(f"Error during image processing: {str(e)}")
             raise ProcessingError(f"Error during image processing: {str(e)}")
         finally:
             self.close_hdf5()
@@ -373,7 +399,10 @@ class VideoProcessor(ProcessorBase):
         self.fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         self.colored_output = None
         self.overlay_output = None
-        self.logger = logging.getLogger(__name__)
+        self.logger = self.logger.bind(
+            output_path=str(self.config.get_output_path()),
+            frame_step=self.config.frame_step,
+        )
 
     @contextmanager
     def managed_video_processing(self):
@@ -434,6 +463,14 @@ class VideoProcessor(ProcessorBase):
                 self.output_fps,
                 (self.width, self.height),
             )
+        self.logger.info(
+            "Video resources initialized",
+            fps=self.fps,
+            width=self.width,
+            height=self.height,
+            total_frames=self.total_frames,
+            processed_frames=self.processed_frames,
+        )
 
     def cleanup_resources(self):
         """
@@ -523,7 +560,7 @@ class VideoProcessor(ProcessorBase):
         This method orchestrates the entire video processing pipeline, including
         frame extraction, segmentation, analysis, and result saving.
         """
-        self.logger.info(f"Starting video processing for {self.config.input}")
+        self.logger.info("Starting video processing", input_path=str(self.config.input))
 
         try:
             with self.managed_video_processing():
@@ -534,20 +571,24 @@ class VideoProcessor(ProcessorBase):
                 ):
                     try:
                         self.process_frame(frame_count, frame)
+                        self.logger.debug("Frame processed", frame_count=frame_count)
                     except Exception as e:
-                        self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
-                        self.logger.debug("Error details:", exc_info=True)
+                        self.logger.exception(
+                            f"Error processing frame {frame_count}: {str(e)}"
+                        )
 
             self.generate_and_save_stats(self.config.get_output_path())
             self.logger.info(
-                f"Video processing complete. Output files saved with prefix: {self.config.get_output_path()}"
-            )
-            self.logger.info(
-                f"Processed {self.processed_frames} frames out of {self.total_frames} total frames."
+                "Video processing complete",
+                output_path=str(self.config.get_output_path()),
+                processed_frames=self.processed_frames,
+                total_frames=self.total_frames,
             )
         except IOError as e:
+            self.logger.exception(f"Error reading input video: {str(e)}")
             raise InputError(f"Error reading input video: {str(e)}")
         except ProcessingError as e:
+            self.logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
 
     def generate_and_save_stats(self, output_path: Path):
@@ -599,7 +640,13 @@ class DirectoryProcessor:
         """
         self.config = config
         self.model = create_segmentation_model(config.model)
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger.bind(
+            processor_type=self.__class__.__name__,
+            input_type=self.config.input_type.value,
+            input_path=str(self.config.input),
+            output_path=str(self.config.get_output_path()),
+            frame_step=self.config.frame_step,
+        )
 
     def process(self):
         """
@@ -608,23 +655,32 @@ class DirectoryProcessor:
         This method discovers video files in the input directory and processes
         each video sequentially using the VideoProcessor.
         """
-        self.logger.info(f"Starting directory processing for {self.config.input}")
+        self.logger.info(
+            "Starting directory processing", input_path=str(self.config.input)
+        )
 
         video_files = self.get_video_files()
         if not video_files:
+            self.logger.error("No video files found")
             raise InputError(f"No video files found in directory: {self.config.input}")
 
         output_dir = self.config.get_output_path()
-        self.logger.info(f"Output directory for all videos: {output_dir}")
+        self.logger.info("Output directory set", output_dir=str(output_dir))
+        self.logger.info("Video files found", count=len(video_files))
 
         for video_file in tqdm(video_files, desc="Processing videos"):
             try:
                 self.process_single_video(video_file, output_dir)
+                self.logger.info("Video processed", video_file=str(video_file))
             except Exception as e:
-                self.logger.error(f"Error processing video {video_file}: {str(e)}")
-                self.logger.debug("Error details:", exc_info=True)
+                self.logger.error(
+                    "Error processing video", video_file=str(video_file), error=str(e)
+                )
+                self.logger.debug("Error details", exc_info=True)
 
-        self.logger.info(f"Finished processing all videos in {self.config.input}")
+        self.logger.info(
+            "Finished processing all videos", input_directory=str(self.config.input)
+        )
 
     def get_video_files(self) -> List[Path]:
         """
@@ -645,7 +701,7 @@ class DirectoryProcessor:
             video_file (Path): Path to the video file to process.
             output_dir (Path): Directory to save the processing results.
         """
-        self.logger.info(f"Processing video: {video_file}")
+        self.logger.info("Processing video", video_file=str(video_file))
 
         video_config = self.create_video_config(video_file, output_dir)
 
@@ -653,8 +709,10 @@ class DirectoryProcessor:
             processor = VideoProcessor(self.model, video_config)
             processor.process()
         except Exception as e:
-            self.logger.error(f"Error processing video {video_file}: {str(e)}")
-            self.logger.debug("Error details:", exc_info=True)
+            self.logger.error(
+                "Error in video processing", video_file=str(video_file), error=str(e)
+            )
+            raise ProcessingError(f"Error processing video {video_file}: {str(e)}")
 
     def create_video_config(self, video_file: Path, output_dir: Path) -> Config:
         """
@@ -722,6 +780,7 @@ def create_processor(
         try:
             model = create_segmentation_model(config.model)
         except ValueError as e:
+            logger.exception(f"Error creating segmentation model: {str(e)}")
             raise ModelError(f"Error creating segmentation model: {str(e)}")
 
         if config.input_type == InputType.SINGLE_VIDEO:
@@ -729,4 +788,5 @@ def create_processor(
         elif config.input_type == InputType.SINGLE_IMAGE:
             return ImageProcessor(model, config)
         else:
+            logger.error(f"Unsupported input type: {config.input_type}")
             raise ConfigurationError(f"Unsupported input type: {config.input_type}")
