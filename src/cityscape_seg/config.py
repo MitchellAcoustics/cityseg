@@ -55,12 +55,13 @@ class Config:
 
     Attributes:
         input (Union[Path, str]): Path to the input image, video, or directory.
-        output_prefix (Path): Prefix for output file paths.
+        output_dir (Optional[Path]): Directory for output files.
+        output_prefix (Optional[str]): Prefix for output file names.
         model (ModelConfig): Configuration for the segmentation model.
         frame_step (int): Number of frames to skip in video processing.
-        generate_overlay (bool): Whether to generate an overlay of the segmentation on the original image.
-        save_colored_segmentation (bool): Whether to save the colored segmentation map.
-        save_raw_segmentation (bool): Whether to save the raw segmentation map (as numpy array).
+        save_raw_segmentation (bool): Whether to save the raw segmentation maps.
+        save_colored_segmentation (bool): Whether to save the colored segmentation video/images.
+        save_overlay (bool): Whether to save the overlay video/images.
         visualization (VisualizationConfig): Configuration for visualization settings.
     """
 
@@ -69,9 +70,9 @@ class Config:
     output_prefix: Optional[str]
     model: ModelConfig
     frame_step: int = 1
-    generate_overlay: bool = True
-    save_colored_segmentation: bool = True
     save_raw_segmentation: bool = True
+    save_colored_segmentation: bool = False
+    save_overlay: bool = True
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     input_type: InputType = field(init=False)
 
@@ -171,11 +172,11 @@ class Config:
             output_prefix=config_dict.get("output_prefix"),
             model=model_config,
             frame_step=config_dict.get("frame_step", 1),
-            generate_overlay=config_dict.get("generate_overlay", True),
+            save_raw_segmentation=config_dict.get("save_raw_segmentation", True),
             save_colored_segmentation=config_dict.get(
                 "save_colored_segmentation", True
             ),
-            save_raw_segmentation=config_dict.get("save_raw_segmentation", True),
+            save_overlay=config_dict.get("save_overlay", True),
             visualization=vis_config,
         )
 
@@ -192,9 +193,9 @@ class Config:
             "output_prefix": self.output_prefix,
             "model": asdict(self.model),
             "frame_step": self.frame_step,
-            "generate_overlay": self.generate_overlay,
-            "save_colored_segmentation": self.save_colored_segmentation,
             "save_raw_segmentation": self.save_raw_segmentation,
+            "save_colored_segmentation": self.save_colored_segmentation,
+            "save_overlay": self.save_overlay,
             "visualization": asdict(self.visualization),
             "input_type": self.input_type.value,
         }

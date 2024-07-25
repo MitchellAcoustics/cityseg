@@ -1,4 +1,5 @@
 import logging
+import traceback
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Union
@@ -146,7 +147,7 @@ class ProcessorBase(ABC):
 
     def colorize_segmentation(self, seg_map: np.ndarray) -> np.ndarray:
         """
-        Colorize a segmentation map using the model's color palette.
+        Colorize a segmentation map using the model's color palette or the specified colormap.
 
         Args:
             seg_map (np.ndarray): Input segmentation map.
@@ -156,9 +157,13 @@ class ProcessorBase(ABC):
         """
         if isinstance(seg_map, torch.Tensor):
             seg_map = seg_map.cpu().numpy()
-        return np.array(self.model.palette, dtype=np.uint8)[
-            seg_map.astype(np.int64) % len(self.model.palette)
-        ]
+
+        if self.config.visualization.colormap == "default":
+            return np.array(self.model.palette, dtype=np.uint8)[
+                seg_map.astype(np.int64) % len(self.model.palette)
+                ]
+        else:
+            return self.colormap[seg_map.astype(np.int64) % len(self.colormap)]
 
     def save_results(
         self, frame: np.ndarray, seg_map: np.ndarray, frame_count: int = None
@@ -176,17 +181,16 @@ class ProcessorBase(ABC):
         if self.config.save_raw_segmentation:
             save_segmentation_map(seg_map, output_path, frame_count)
 
-        colored_seg = self.colorize_segmentation(seg_map)
+        if self.config.save_colored_segmentation or self.config.save_overlay:
+            colored_seg = self.colorize_segmentation(seg_map)
 
-        if self.config.save_colored_segmentation:
-            save_colored_segmentation(colored_seg, output_path, frame_count)
+            if self.config.save_colored_segmentation:
+                save_colored_segmentation(colored_seg, output_path, frame_count)
 
-        if self.config.generate_overlay:
-            alpha = self.config.visualization.alpha
-            frame = frame.astype(np.float32)
-            colored_seg = colored_seg.astype(np.float32)
-            overlay = cv2.addWeighted(frame, 1 - alpha, colored_seg, alpha, 0)
-            save_overlay(overlay.astype(np.uint8), output_path, frame_count)
+            if self.config.save_overlay:
+                alpha = self.config.visualization.alpha
+                overlay = cv2.addWeighted(frame, 1 - alpha, colored_seg.astype(np.float32), alpha, 0)
+                save_overlay(overlay.astype(np.uint8), output_path, frame_count)
 
     def initialize_hdf5(self, shape):
         """
@@ -268,105 +272,131 @@ class VideoProcessor(ProcessorBase):
     """
 
     def process(self):
-        """
-        Process an input video through the segmentation pipeline.
+        logger = logging.getLogger(__name__)
 
-        This method handles loading the video, performing frame-by-frame segmentation,
-        saving results, and generating analysis data. If an existing HDF5 file is found,
-        it will analyze the existing segmentation maps instead of reprocessing the video.
-        """
         input_path = self.config.input
         output_path = self.config.get_output_path()
         frame_step = self.config.frame_step
 
-        hdf5_file_path = output_path.with_name(f"{output_path.stem}_segmaps.h5")
-
-        if hdf5_file_path.exists():
-            logger.info(
-                f"Found existing HDF5 file: {hdf5_file_path}. Analyzing existing segmentation maps."
+        logger.info(f"Starting video processing for {input_path}")
+        logger.debug(
+            f"Configuration: save_colored_segmentation={self.config.save_colored_segmentation}, save_overlay={self.config.save_overlay}"
             )
-            analyze_hdf5_segmaps_with_stats(hdf5_file_path, output_path)
-            return
 
-        video = cv2.VideoCapture(str(input_path))
-        if not video.isOpened():
-            raise IOError(f"Error opening video file: {input_path}")
+        perform_colorization = self.config.save_colored_segmentation or self.config.save_overlay
+        logger.info(f"Colorization will be {'performed' if perform_colorization else 'skipped'}")
 
         try:
+            video = cv2.VideoCapture(str(input_path))
+            if not video.isOpened():
+                raise IOError(f"Error opening video file: {input_path}")
+
+            logger.debug("Video file opened successfully")
+
             fps = int(video.get(cv2.CAP_PROP_FPS))
             width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 
+            logger.info(f"Video properties: FPS={fps}, Width={width}, Height={height}, Total Frames={total_frames}")
+
             processed_frames = total_frames // frame_step
             output_fps = max(1, fps // frame_step)
 
-            self.initialize_hdf5((processed_frames, height, width))
+            logger.info(f"Will process {processed_frames} frames at {output_fps} FPS")
+
+            if self.config.save_raw_segmentation:
+                logger.debug("Initializing HDF5 file for raw segmentation maps")
+                self.initialize_hdf5((processed_frames, height, width))
+
+            logger.debug("Initializing CSV files for analysis")
             self.counts_file, self.percentages_file = initialize_csv_files(
-                output_path, self.model.category_names
-            )
+                    output_path, self.model.category_names
+                    )
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            overlay_output = cv2.VideoWriter(
-                str(output_path.with_name(f"{output_path.stem}_overlay.mp4")),
-                fourcc,
-                output_fps,
-                (width, height),
-            )
-            solid_output = cv2.VideoWriter(
-                str(output_path.with_name(f"{output_path.stem}_solid.mp4")),
-                fourcc,
-                output_fps,
-                (width, height),
-            )
+            colored_output = None
+            overlay_output = None
+
+            if perform_colorization:
+                if self.config.save_colored_segmentation:
+                    logger.debug("Creating colored segmentation video writer")
+                    colored_output = cv2.VideoWriter(
+                            str(output_path.with_name(f"{output_path.stem}_colored.mp4")),
+                            fourcc,
+                            output_fps,
+                            (width, height),
+                            )
+
+                if self.config.save_overlay:
+                    logger.debug("Creating overlay video writer")
+                    overlay_output = cv2.VideoWriter(
+                            str(output_path.with_name(f"{output_path.stem}_overlay.mp4")),
+                            fourcc,
+                            output_fps,
+                            (width, height),
+                            )
 
             with tqdm(total=processed_frames, unit="frames", leave=False) as pbar:
-                for frame_idx, frame_count in enumerate(
-                    range(0, total_frames, frame_step)
-                ):
+                for frame_idx, frame_count in enumerate(range(0, total_frames, frame_step)):
+                    logger.debug(f"Processing frame {frame_count}")
                     video.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
                     ret, frame = video.read()
                     if not ret:
-                        logger.warning(
-                            f"Failed to read frame at position {frame_count}. Stopping processing."
-                        )
+                        logger.warning(f"Failed to read frame at position {frame_count}. Stopping processing.")
                         break
 
+                    logger.debug("Performing segmentation")
                     seg_map = self.process_image(frame)
-                    colored_seg = self.colorize_segmentation(seg_map)
-                    overlay = cv2.addWeighted(frame, 0.5, colored_seg, 0.5, 0)
 
-                    self.save_to_hdf5(seg_map, frame_idx)
-                    analysis = analyze_segmentation_map(
-                        seg_map, self.model.num_categories
-                    )
-                    append_to_csv_files(
-                        self.counts_file, self.percentages_file, frame_count, analysis
-                    )
+                    if self.config.save_raw_segmentation:
+                        logger.debug("Saving raw segmentation map")
+                        self.save_to_hdf5(seg_map, frame_idx)
 
-                    overlay_output.write(overlay.astype(np.uint8))
-                    solid_output.write(colored_seg)
+                    logger.debug("Analyzing segmentation map")
+                    analysis = analyze_segmentation_map(seg_map, self.model.num_categories)
+                    append_to_csv_files(self.counts_file, self.percentages_file, frame_count, analysis)
+
+                    if perform_colorization:
+                        logger.debug("Colorizing segmentation map")
+                        colored_seg = self.colorize_segmentation(seg_map)
+
+                        if self.config.save_colored_segmentation:
+                            logger.debug("Writing colored segmentation frame")
+                            colored_output.write(colored_seg.astype(np.uint8))
+
+                        if self.config.save_overlay:
+                            logger.debug("Creating and writing overlay frame")
+                            alpha = self.config.visualization.alpha
+                            overlay = cv2.addWeighted(
+                                    frame.astype(np.float64),
+                                    1 - alpha,
+                                    colored_seg.astype(np.float64),
+                                    alpha,
+                                    0
+                                    ).astype(np.uint8)
+                            overlay_output.write(overlay)
 
                     pbar.update(1)
 
         except Exception as e:
-            logger.error(f"An error occurred during video processing: {str(e)}")
+            logger.exception(f"An error occurred during video processing: {str(e)}")
             raise
+
         finally:
+            logger.debug("Cleaning up resources")
             video.release()
-            overlay_output.release()
-            solid_output.release()
+            if colored_output:
+                colored_output.release()
+            if overlay_output:
+                overlay_output.release()
             cv2.destroyAllWindows()
             self.close_hdf5()
 
         self.generate_and_save_stats(output_path)
 
-        logger.info(
-            f"Video processing complete. Output files saved with prefix: {output_path}"
-        )
-        logger.info(
-            f"Processed {processed_frames} frames out of {total_frames} total frames."
-        )
+        logger.info(f"Video processing complete. Output files saved with prefix: {output_path}")
+        logger.info(f"Processed {processed_frames} frames out of {total_frames} total frames.")
 
     def generate_and_save_stats(self, output_path: Path):
         """
@@ -436,9 +466,9 @@ class DirectoryProcessor:
                 output_prefix=None,
                 model=self.config.model,
                 frame_step=self.config.frame_step,
-                generate_overlay=self.config.generate_overlay,
-                save_colored_segmentation=self.config.save_colored_segmentation,
                 save_raw_segmentation=self.config.save_raw_segmentation,
+                save_colored_segmentation=self.config.save_colored_segmentation,
+                save_overlay=self.config.save_overlay,
                 visualization=self.config.visualization,
             )
             self._process_single_video(video_config)

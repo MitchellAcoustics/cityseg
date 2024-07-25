@@ -1,61 +1,46 @@
 import argparse
 import logging
-import sys
+from tqdm import tqdm
 from pathlib import Path
 
 from cityscape_seg.config import Config
 from cityscape_seg.processors import create_processor
 
 
-def setup_logging():
+def setup_logging(log_level):
     """
     Set up logging configuration for the application.
 
-    This function configures the logging system to output log messages
-    to both the console and a file named 'segmentation.log'. It sets
-    the logging level to INFO and includes timestamp, log level,
-    logger name, file name, line number, and the log message in the output.
+    Args:
+        log_level (str): Desired logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
     Returns:
         logging.Logger: Configured logger object.
     """
+    numeric_level = getattr(logging, log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f'Invalid log level: {log_level}')
+
+    class TqdmLoggingHandler(logging.Handler):
+        def emit(self, record):
+            try:
+                msg = self.format(record)
+                tqdm.write(msg)
+                self.flush()
+            except Exception:
+                self.handleError(record)
 
     logging.basicConfig(
-        level=logging.INFO,
+        level=numeric_level,
         format="%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s",
         handlers=[
-            logging.StreamHandler(sys.stdout),
+            TqdmLoggingHandler(),
             logging.FileHandler("segmentation.log"),
         ],
     )
     return logging.getLogger(__name__)
 
-
-logger = setup_logging()
-
-
 def main():
-    """
-    Main entry point for the semantic segmentation application.
-
-    This function parses command-line arguments, loads the configuration,
-    initializes the segmentation model and processor, and executes the
-    segmentation process. It handles both image and video inputs,
-    saving the results and analysis data to specified output locations.
-
-    The function uses a try-except block to catch and log any errors
-    that occur during the process.
-
-    Command-line arguments:
-        --config: Path to the configuration YAML file (required)
-        --input: Path to input image or video (overrides config file)
-        --output: Path to output prefix (overrides config file)
-        --frame_step: Process every nth frame (overrides config file)
-
-    Returns:
-        None
-    """
-
     parser = argparse.ArgumentParser(
         description="Semantic Segmentation for High-Resolution Images and Videos"
     )
@@ -80,8 +65,17 @@ def main():
     parser.add_argument(
         "--frame_step", type=int, help="Process every nth frame (overrides config file)"
     )
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level"
+    )
 
     args = parser.parse_args()
+
+    logger = setup_logging(args.log_level)
 
     try:
         config = Config.from_yaml(Path(args.config))
@@ -109,7 +103,6 @@ def main():
         logger.exception(f"An error occurred during processing: {str(e)}")
     finally:
         logger.info("Processing complete.")
-
 
 if __name__ == "__main__":
     main()
