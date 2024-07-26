@@ -34,6 +34,8 @@ class Config:
     output_prefix: Optional[str]
     model: ModelConfig
     frame_step: int = 1
+    batch_size: int = 16
+    output_fps: Optional[float] = None
     save_raw_segmentation: bool = True
     save_colored_segmentation: bool = False
     save_overlay: bool = True

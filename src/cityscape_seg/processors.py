@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional
 
 import cv2
 import numpy as np
@@ -60,7 +60,7 @@ class SegmentationProcessor:
             if self.config.model.max_size:
                 image.thumbnail((self.config.model.max_size, self.config.model.max_size))
 
-            result = self.pipeline(image)
+            result = self.pipeline([image])[0]
             self.save_results(image, result)
             self.analyze_results(result['seg_map'])
 
@@ -72,13 +72,40 @@ class SegmentationProcessor:
     def process_video(self):
         self.logger.info(f"Processing video: {self.config.input}")
         try:
+            cap = cv2.VideoCapture(str(self.config.input))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            original_fps = cap.get(cv2.CAP_PROP_FPS)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
             output_path = self.config.get_output_path()
-            results = self.pipeline.process_video(
-                str(self.config.input),
-                str(output_path) if self.config.save_colored_segmentation else None,
-                frame_interval=self.config.frame_step,
-                show_progress=True
-            )
+            output_fps = self.config.output_fps or original_fps
+
+            if self.config.save_colored_segmentation or self.config.save_overlay:
+                video_writer = cv2.VideoWriter(
+                    str(output_path),
+                    cv2.VideoWriter_fourcc(*'mp4v'),
+                    output_fps,
+                    (width, height)
+                )
+
+            results = []
+            for batch in tqdm(self._frame_generator(cap), total=frame_count // self.config.frame_step):
+                batch_results = self.pipeline(batch)
+                results.extend(batch_results)
+
+                if self.config.save_colored_segmentation or self.config.save_overlay:
+                    for pil_image, result in zip(batch, batch_results):
+                        if self.config.save_colored_segmentation:
+                            colored_seg = self.visualize_segmentation(pil_image, result['seg_map'], result['palette'])
+                            video_writer.write(cv2.cvtColor(np.array(colored_seg), cv2.COLOR_RGB2BGR))
+                        elif self.config.save_overlay:
+                            overlay = self.visualize_segmentation(pil_image, result['seg_map'], result['palette'])
+                            video_writer.write(cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR))
+
+            cap.release()
+            if self.config.save_colored_segmentation or self.config.save_overlay:
+                video_writer.release()
 
             self.save_video_results(results)
             self.analyze_video_results(results)
@@ -88,6 +115,44 @@ class SegmentationProcessor:
             self.logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
 
+    def _frame_generator(self, cap):
+        while True:
+            frames = []
+            for _ in range(self.config.batch_size):
+                for _ in range(self.config.frame_step):
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                if not ret:
+                    break
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                pil_image = Image.fromarray(rgb_frame)
+                frames.append(pil_image)
+            if not frames:
+                break
+            yield frames
+
+    def visualize_segmentation(self, image: Image.Image, seg_map: np.ndarray, palette: Optional[np.ndarray]) -> np.ndarray:
+        if palette is None:
+            palette = self._generate_palette(len(np.unique(seg_map)))
+
+        image_array = np.array(image)
+        color_seg = np.zeros((seg_map.shape[0], seg_map.shape[1], 3), dtype=np.uint8)
+        for label_id, color in enumerate(palette):
+            color_seg[seg_map == label_id] = color
+
+        img = image_array * 0.5 + color_seg * 0.5
+        return img.astype(np.uint8)
+
+    def _generate_palette(self, num_colors):
+        def _generate_color(i):
+            r = int((i * 100) % 255)
+            g = int((i * 150) % 255)
+            b = int((i * 200) % 255)
+            return [r, g, b]
+
+        return np.array([_generate_color(i) for i in range(num_colors)])
+
     def save_results(self, image: Image.Image, result: dict):
         output_path = self.config.get_output_path()
 
@@ -95,11 +160,11 @@ class SegmentationProcessor:
             save_segmentation_map(result['seg_map'], output_path)
 
         if self.config.save_colored_segmentation:
-            colored_seg = self.pipeline.visualize_segmentation(image, result['seg_map'])
+            colored_seg = self.visualize_segmentation(image, result['seg_map'], result['palette'])
             save_colored_segmentation(colored_seg, output_path)
 
         if self.config.save_overlay:
-            overlay = self.pipeline.visualize_segmentation(image, result['seg_map'])
+            overlay = self.visualize_segmentation(image, result['seg_map'], result['palette'])
             save_overlay(overlay, output_path)
 
     def save_video_results(self, results: List[dict]):
@@ -108,31 +173,6 @@ class SegmentationProcessor:
         if self.config.save_raw_segmentation:
             for i, result in enumerate(results):
                 save_segmentation_map(result['seg_map'], output_path, frame_count=i)
-
-        # Note: Colored segmentation is already saved during video processing if enabled
-
-        if self.config.save_overlay and not self.config.save_colored_segmentation:
-            cap = cv2.VideoCapture(str(self.config.input))
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(
-                str(output_path.with_name(f"{output_path.stem}_overlay.mp4")),
-                fourcc,
-                cap.get(cv2.CAP_PROP_FPS) // self.config.frame_step,
-                (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-            )
-
-            for i, result in enumerate(results):
-                cap.set(cv2.CAP_PROP_POS_FRAMES, i * self.config.frame_step)
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                image = Image.fromarray(frame_rgb)
-                overlay = self.pipeline.visualize_segmentation(image, result['seg_map'])
-                out.write(cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR))
-
-            cap.release()
-            out.release()
 
     def analyze_results(self, seg_map: np.ndarray):
         analysis = analyze_segmentation_map(seg_map, len(self.pipeline.model.config.id2label))
@@ -157,6 +197,7 @@ class SegmentationProcessor:
 
         percentages_stats = generate_category_stats(percentages_file)
         percentages_stats.to_csv(output_path.with_name(f"{output_path.stem}_percentages_stats.csv"), index=False)
+
 
 class DirectoryProcessor:
     def __init__(self, config: Config):

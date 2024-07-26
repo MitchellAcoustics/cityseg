@@ -1,3 +1,4 @@
+# %%
 import argparse
 from pathlib import Path
 
@@ -59,6 +60,7 @@ def main():
         logger.exception(f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
+# %%
     from cityscape_seg.config import ModelConfig, Config, VisualizationConfig
     import warnings
 
@@ -66,13 +68,14 @@ if __name__ == "__main__":
         name="facebook/mask2former-swin-large-mapillary-vistas-semantic",
         )
     config = Config(
-        input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs"),
+        input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/Carlov2_15s_3840x2160.mov"),
         output_dir=None,
         output_prefix=None,
         model=model_config,
         frame_step=10,
-        save_raw_segmentation=True,
-        save_colored_segmentation=False,
+        batch_size=16,
+        save_raw_segmentation=False,
+        save_colored_segmentation=True,
         save_overlay=True,
         visualization=VisualizationConfig(alpha=0.5, colormap="default"),
         )
