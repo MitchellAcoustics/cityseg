@@ -1,28 +1,15 @@
-class CityScapeSegError(Exception):
-    """Base exception class for CityScapeSeg project."""
-
+class ConfigurationError(Exception):
+    """Exception raised for errors in the configuration."""
     pass
 
-
-class ConfigurationError(CityScapeSegError):
-    """Raised when there's an error in the configuration."""
-
+class InputError(Exception):
+    """Exception raised for errors with input data."""
     pass
 
-
-class ProcessingError(CityScapeSegError):
-    """Raised when there's an error during image or video processing."""
-
+class ModelError(Exception):
+    """Exception raised for errors related to the segmentation model."""
     pass
 
-
-class ModelError(CityScapeSegError):
-    """Raised when there's an error related to the segmentation model."""
-
-    pass
-
-
-class InputError(CityScapeSegError):
-    """Raised when there's an error with the input data."""
-
+class ProcessingError(Exception):
+    """Exception raised for errors during data processing."""
     pass

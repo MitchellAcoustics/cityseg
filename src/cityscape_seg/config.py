@@ -1,3 +1,4 @@
+# %%
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -5,67 +6,29 @@ from typing import Any, Dict, Optional, Union
 
 import yaml
 
-
 class InputType(Enum):
     SINGLE_IMAGE = "single_image"
     SINGLE_VIDEO = "single_video"
     DIRECTORY = "directory"
 
-
 @dataclass
 class ModelConfig:
-    """
-    Configuration for the segmentation model.
-
-    Attributes:
-        type (str): Type of the segmentation model (e.g., 'beit', 'oneformer').
-        name (str): Name or identifier of the specific model.
-        dataset (str): Dataset the model was trained on (e.g., 'cityscapes', 'ade20k').
-        max_size (Optional[int]): Maximum size for input image resizing. If None, no resizing is applied.
-        tile_size (Optional[int]): Size of tiles for processing large images. If None, no tiling is applied.
-        mixed_precision (bool): Flag to enable mixed precision processing.
-    """
-
-    type: str
     name: str
-    dataset: str
+    model_type: Optional[str] = None  # Can be 'oneformer', 'mask2former', or None for auto-detection
     max_size: Optional[int] = None
     tile_size: Optional[int] = None
-    mixed_precision: bool = False
-    device: str = None
+    device: Optional[str] = None
 
+    # TODO: impelement model_type auto-detection
+    # TODO: implement device auto-detection
 
 @dataclass
 class VisualizationConfig:
-    """
-    Configuration for visualization settings.
-
-    Attributes:
-        alpha (float): Transparency of the segmentation overlay (0.0 to 1.0).
-        colormap (str): Colormap to use for visualization. Options: "default", "cityscapes", "ade20k".
-    """
-
     alpha: float = 0.5
     colormap: str = "default"
 
-
 @dataclass
 class Config:
-    """
-    Main configuration class for the segmentation pipeline.
-
-    Attributes:
-        input (Union[Path, str]): Path to the input image, video, or directory.
-        output_dir (Optional[Path]): Directory for output files.
-        output_prefix (Optional[str]): Prefix for output file names.
-        model (ModelConfig): Configuration for the segmentation model.
-        frame_step (int): Number of frames to skip in video processing.
-        save_raw_segmentation (bool): Whether to save the raw segmentation maps.
-        save_colored_segmentation (bool): Whether to save the colored segmentation video/images.
-        save_overlay (bool): Whether to save the overlay video/images.
-        visualization (VisualizationConfig): Configuration for visualization settings.
-    """
-
     input: Union[Path, str]
     output_dir: Optional[Path]
     output_prefix: Optional[str]
@@ -86,28 +49,19 @@ class Config:
             return InputType.DIRECTORY
         elif self.input.suffix.lower() in [".mp4", ".avi", ".mov"]:
             return InputType.SINGLE_VIDEO
-        elif self.input.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+        elif self.input.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"]:
             return InputType.SINGLE_IMAGE
         else:
             raise ValueError(f"Unsupported input type: {self.input}")
 
     def generate_output_prefix(self) -> str:
-        """
-        Generate a default output prefix based on input file and model configuration.
-
-        Returns:
-            str: Generated output prefix.
-        """
         if self.input_type == InputType.DIRECTORY:
             name = self.input.name
         else:
-            name = self.input.stem.split("_")[
-                0
-            ]  # Use only the first part of the filename
+            name = self.input.stem.split("_")[0]  # Use only the first part of the filename
 
-        model_type = self.model.type
-        dataset = self.model.dataset
-        base_name = f"{name}_{model_type}_{dataset}_step{self.frame_step}"
+        model_name = self.model.name.split("/")[-1]
+        base_name = f"{name}_{model_name}_step{self.frame_step}"
 
         if self.model.tile_size:
             base_name += f"_tile{self.model.tile_size}"
@@ -115,12 +69,6 @@ class Config:
         return base_name
 
     def get_output_path(self) -> Path:
-        """
-        Get the full output path based on output_dir, output_prefix, and input type.
-
-        Returns:
-            Path: Full output path.
-        """
         if self.output_dir is None:
             self.output_dir = self.input.parent / "output"
         elif not Path(self.output_dir).is_absolute():
@@ -128,11 +76,9 @@ class Config:
 
         self.output_dir = self.output_dir.resolve()
 
-        # For directory processing, create a single subdirectory for all outputs
         if self.input_type == InputType.DIRECTORY:
-            model_type = self.model.type
-            dataset = self.model.dataset
-            subdir_name = f"{model_type}_{dataset}_step{self.frame_step}"
+            model_name = self.model.name.split("/")[-1]
+            subdir_name = f"{model_name}_step{self.frame_step}"
             if self.model.tile_size:
                 subdir_name += f"_tile{self.model.tile_size}"
             self.output_dir = self.output_dir / subdir_name
@@ -150,15 +96,6 @@ class Config:
 
     @classmethod
     def from_yaml(cls, config_path: Path) -> "Config":
-        """
-        Create a Config instance from a YAML file.
-
-        Args:
-            config_path (Path): Path to the YAML configuration file.
-
-        Returns:
-            Config: Instantiated Config object.
-        """
         with open(config_path, "r") as f:
             config_dict = yaml.safe_load(f)
 
@@ -167,28 +104,18 @@ class Config:
 
         return cls(
             input=Path(config_dict["input"]),
-            output_dir=Path(config_dict.get("output_dir", ""))
-            if config_dict.get("output_dir")
-            else None,
+            output_dir=Path(config_dict.get("output_dir", "")) if config_dict.get("output_dir") else None,
             output_prefix=config_dict.get("output_prefix"),
             model=model_config,
             frame_step=config_dict.get("frame_step", 1),
             save_raw_segmentation=config_dict.get("save_raw_segmentation", True),
-            save_colored_segmentation=config_dict.get(
-                "save_colored_segmentation", True
-            ),
+            save_colored_segmentation=config_dict.get("save_colored_segmentation", False),
             save_overlay=config_dict.get("save_overlay", True),
             visualization=vis_config,
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert the Config instance to a dictionary.
-
-        Returns:
-            Dict[str, Any]: Dictionary representation of the Config.
-        """
-        config_dict = {
+        return {
             "input": str(self.input),
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "output_prefix": self.output_prefix,
@@ -200,4 +127,23 @@ class Config:
             "visualization": asdict(self.visualization),
             "input_type": self.input_type.value,
         }
-        return config_dict
+
+
+if __name__ == "__main__":
+    # %%
+    # config = Config.from_yaml(Path("config.yaml"))
+    model_config = ModelConfig(
+        name="facebook/mask2former-swin-large-mapillary-vistas-semantic",
+        )
+    config = Config(
+        input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs"),
+        output_dir=None,
+        output_prefix=None,
+        model=model_config,
+        frame_step=1,
+        save_raw_segmentation=True,
+        save_colored_segmentation=False,
+        save_overlay=True,
+        visualization=VisualizationConfig(alpha=0.5, colormap="default"),
+        )
+    print(config.to_dict())

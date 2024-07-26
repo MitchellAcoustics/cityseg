@@ -52,6 +52,10 @@ colorama==0.4.6
 comm==0.2.2
     # via ipykernel
     # via ipywidgets
+contourpy==1.2.1
+    # via matplotlib
+cycler==0.12.1
+    # via matplotlib
 debugpy==1.8.2
     # via ipykernel
 decorator==5.1.1
@@ -66,6 +70,8 @@ filelock==3.15.4
     # via huggingface-hub
     # via torch
     # via transformers
+fonttools==4.53.1
+    # via matplotlib
 fqdn==1.5.1
     # via jsonschema
 fsspec==2024.6.1
@@ -171,6 +177,8 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via mkdocs-jupyter
+kiwisolver==1.4.5
+    # via matplotlib
 llvmlite==0.43.0
     # via numba
 loguru==0.7.2
@@ -191,6 +199,7 @@ markupsafe==2.1.5
     # via mkdocs-autorefs
     # via mkdocstrings
     # via nbconvert
+matplotlib==3.9.1
 matplotlib-inline==0.1.7
     # via ipykernel
     # via ipython
@@ -251,7 +260,9 @@ numexpr==2.10.1
 numpy==2.0.1
     # via bottleneck
     # via cityscape-seg
+    # via contourpy
     # via h5py
+    # via matplotlib
     # via numba
     # via numexpr
     # via opencv-python
@@ -270,6 +281,7 @@ packaging==24.1
     # via jupyterlab
     # via jupyterlab-server
     # via jupytext
+    # via matplotlib
     # via mkdocs
     # via natten
     # via nbconvert
@@ -291,6 +303,7 @@ pexpect==4.9.0
     # via ipython
 pillow==10.4.0
     # via cityscape-seg
+    # via matplotlib
     # via torchvision
 platformdirs==4.2.2
     # via jupyter-core
@@ -323,11 +336,14 @@ pygments==2.18.0
 pymdown-extensions==10.8.1
     # via mkdocs-material
     # via mkdocstrings
+pyparsing==3.1.2
+    # via matplotlib
 pytest==8.3.2
 python-dateutil==2.9.0.post0
     # via arrow
     # via ghp-import
     # via jupyter-client
+    # via matplotlib
     # via pandas
 python-json-logger==2.0.7
     # via jupyter-events

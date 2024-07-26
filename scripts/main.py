@@ -1,18 +1,12 @@
 import argparse
-import warnings
 from pathlib import Path
 
-from cityscape_seg.config import Config
-from cityscape_seg.exceptions import (
-    ConfigurationError,
-    InputError,
-    ModelError,
-    ProcessingError,
-)
-from cityscape_seg.processors import create_processor
 from loguru import logger
-from tqdm import tqdm
 
+from cityscape_seg.config import Config
+from cityscape_seg.processors import create_processor
+from cityscape_seg.exceptions import ConfigurationError, InputError, ModelError, ProcessingError
+from tqdm.auto import tqdm
 
 class TqdmCompatibleSink:
     def __init__(self, compact=True):
@@ -37,85 +31,59 @@ def setup_logging(log_level, verbose=False):
     # File logging (always verbose, JSON format)
     logger.add("segmentation.log", format="{message}", level="DEBUG", serialize=True)
 
-
-def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="Semantic Segmentation for High-Resolution Images and Videos"
-    )
-    parser.add_argument(
-        "--config", required=True, type=str, help="Path to configuration YAML file"
-    )
-    parser.add_argument(
-        "--input",
-        type=str,
-        help="Path to input image, video, or directory (overrides config file)",
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        help="Path to output directory (overrides config file)",
-    )
-    parser.add_argument(
-        "--output_prefix",
-        type=str,
-        help="Prefix for output files (overrides config file)",
-    )
-    parser.add_argument(
-        "--frame_step", type=int, help="Process every nth frame (overrides config file)"
-    )
-    parser.add_argument(
-        "--log_level",
-        type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set the logging level",
-    )
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    return parser.parse_args()
-
-
 @logger.catch
 def main():
-    args = parse_arguments()
-    setup_logging(args.log_level, args.verbose)
-    logger.info(f"Starting segmentation process with input: {args.input}")
+    parser = argparse.ArgumentParser(description="Semantic Segmentation Pipeline")
+    parser.add_argument("config", type=str, help="Path to the YAML configuration file")
+    args = parser.parse_args()
 
     try:
         config = Config.from_yaml(Path(args.config))
-
-        # Override config with command-line arguments
-        if args.input:
-            config.input = Path(args.input)
-        if args.frame_step:
-            config.frame_step = args.frame_step
-        if args.output_dir:
-            config.output_dir = Path(args.output_dir)
-        if args.output_prefix:
-            config.output_prefix = args.output_prefix
-
-        # Input validation
-        if not config.input.exists():
-            raise InputError(f"Input path not found: {config.input}")
-
-        logger.info("Configuration loaded", config=config.to_dict())
+        logger.info(f"Configuration loaded from {args.config}")
 
         processor = create_processor(config)
+        logger.info(f"Created processor for input type: {config.input_type}")
+
         processor.process()
+        logger.info("Processing completed successfully")
 
     except ConfigurationError as e:
         logger.error(f"Configuration error: {str(e)}")
-    except ProcessingError as e:
-        logger.error(f"Processing error: {str(e)}")
-    except ModelError as e:
-        logger.error(f"Model error: {str(e)}")
     except InputError as e:
         logger.error(f"Input error: {str(e)}")
+    except ModelError as e:
+        logger.error(f"Model error: {str(e)}")
+    except ProcessingError as e:
+        logger.error(f"Processing error: {str(e)}")
     except Exception as e:
         logger.exception(f"Unexpected error: {str(e)}")
-    finally:
-        logger.info("Processing complete.")
-
 
 if __name__ == "__main__":
-    warnings.filterwarnings("ignore")
-    main()
+    from cityscape_seg.config import ModelConfig, Config, VisualizationConfig
+    import warnings
+
+    model_config = ModelConfig(
+        name="facebook/mask2former-swin-large-mapillary-vistas-semantic",
+        )
+    config = Config(
+        input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs"),
+        output_dir=None,
+        output_prefix=None,
+        model=model_config,
+        frame_step=10,
+        save_raw_segmentation=True,
+        save_colored_segmentation=False,
+        save_overlay=True,
+        visualization=VisualizationConfig(alpha=0.5, colormap="default"),
+        )
+    print(config)
+    logger.info(f"Configuration loaded from {config}")
+
+    processor = create_processor(config)
+    logger.info(f"Created processor for input type: {config.input_type}")
+
+    processor.process()
+    logger.info("Processing completed successfully")
+
+    # warnings.filterwarnings("ignore")
+    # main()

@@ -13,16 +13,21 @@ Main components:
 - analyze_hdf5_segmaps_with_stats: Function for analyzing saved segmentation maps
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .config import Config
-from .models import create_segmentation_model
-from .processors import create_processor
-from .utils import analyze_hdf5_segmaps_with_stats
+from .pipeline import SegmentationPipeline
+from .processors import SegmentationProcessor, DirectoryProcessor, create_processor
+from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
 
 __all__ = [
-    "Config",
-    "create_segmentation_model",
-    "create_processor",
-    "analyze_hdf5_segmaps_with_stats",
+    'Config',
+    'SegmentationPipeline',
+    'SegmentationProcessor',
+    'DirectoryProcessor',
+    'create_processor',
+    'ConfigurationError',
+    'InputError',
+    'ModelError',
+    'ProcessingError'
 ]
