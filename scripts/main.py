@@ -66,6 +66,7 @@ if __name__ == "__main__":
 
     model_config = ModelConfig(
         name="facebook/mask2former-swin-large-mapillary-vistas-semantic",
+            device='mps',
         )
     config = Config(
         input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/Carlov2_15s_3840x2160.mov"),
@@ -73,7 +74,7 @@ if __name__ == "__main__":
         output_prefix=None,
         model=model_config,
         frame_step=10,
-        batch_size=16,
+        batch_size=45,
         save_raw_segmentation=False,
         save_colored_segmentation=True,
         save_overlay=True,
