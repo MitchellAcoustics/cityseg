@@ -6,8 +6,14 @@ from loguru import logger
 
 from cityscape_seg.config import Config
 from cityscape_seg.processors import create_processor
-from cityscape_seg.exceptions import ConfigurationError, InputError, ModelError, ProcessingError
+from cityscape_seg.exceptions import (
+    ConfigurationError,
+    InputError,
+    ModelError,
+    ProcessingError,
+)
 from tqdm.auto import tqdm
+
 
 class TqdmCompatibleSink:
     def __init__(self, compact=True):
@@ -31,6 +37,7 @@ def setup_logging(log_level, verbose=False):
 
     # File logging (always verbose, JSON format)
     logger.add("segmentation.log", format="{message}", level="DEBUG", serialize=True)
+
 
 @logger.catch
 def main():
@@ -59,27 +66,29 @@ def main():
     except Exception as e:
         logger.exception(f"Unexpected error: {str(e)}")
 
+
 if __name__ == "__main__":
-# %%
+    # %%
     from cityscape_seg.config import ModelConfig, Config, VisualizationConfig
-    import warnings
 
     model_config = ModelConfig(
         name="facebook/mask2former-swin-large-mapillary-vistas-semantic",
-            device='mps',
-        )
+        device="mps",
+    )
     config = Config(
-        input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/Carlov2_15s_3840x2160.mov"),
+        input=Path(
+            "/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/Carlov2_15s_3840x2160.mov"
+        ),
         output_dir=None,
         output_prefix=None,
         model=model_config,
         frame_step=10,
         batch_size=45,
-        save_raw_segmentation=False,
+        save_raw_segmentation=True,
         save_colored_segmentation=True,
         save_overlay=True,
         visualization=VisualizationConfig(alpha=0.5, colormap="default"),
-        )
+    )
     print(config)
     logger.info(f"Configuration loaded from {config}")
 

@@ -21,13 +21,13 @@ from .processors import SegmentationProcessor, DirectoryProcessor, create_proces
 from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
 
 __all__ = [
-    'Config',
-    'SegmentationPipeline',
-    'SegmentationProcessor',
-    'DirectoryProcessor',
-    'create_processor',
-    'ConfigurationError',
-    'InputError',
-    'ModelError',
-    'ProcessingError'
+    "Config",
+    "SegmentationPipeline",
+    "SegmentationProcessor",
+    "DirectoryProcessor",
+    "create_processor",
+    "ConfigurationError",
+    "InputError",
+    "ModelError",
+    "ProcessingError",
 ]

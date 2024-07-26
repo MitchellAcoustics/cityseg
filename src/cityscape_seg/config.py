@@ -6,26 +6,31 @@ from typing import Any, Dict, Optional, Union
 
 import yaml
 
+
 class InputType(Enum):
     SINGLE_IMAGE = "single_image"
     SINGLE_VIDEO = "single_video"
     DIRECTORY = "directory"
 
+
 @dataclass
 class ModelConfig:
     name: str
-    model_type: Optional[str] = None  # Can be 'oneformer', 'mask2former', or None for auto-detection
+    model_type: Optional[str] = (
+        None  # Can be 'oneformer', 'mask2former', or None for auto-detection
+    )
     max_size: Optional[int] = None
-    tile_size: Optional[int] = None
     device: Optional[str] = None
 
     # TODO: impelement model_type auto-detection
     # TODO: implement device auto-detection
 
+
 @dataclass
 class VisualizationConfig:
     alpha: float = 0.5
     colormap: str = "default"
+
 
 @dataclass
 class Config:
@@ -41,9 +46,12 @@ class Config:
     save_overlay: bool = True
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     input_type: InputType = field(init=False)
+    force_reprocess: bool = False
 
     def __post_init__(self):
         self.input = Path(self.input)
+        if not self.input.exists():
+            raise ValueError(f"Input path does not exist: {self.input}")
         self.input_type = self._determine_input_type()
 
     def _determine_input_type(self) -> InputType:
@@ -51,7 +59,14 @@ class Config:
             return InputType.DIRECTORY
         elif self.input.suffix.lower() in [".mp4", ".avi", ".mov"]:
             return InputType.SINGLE_VIDEO
-        elif self.input.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"]:
+        elif self.input.suffix.lower() in [
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".bmp",
+            ".tif",
+            ".tiff",
+        ]:
             return InputType.SINGLE_IMAGE
         else:
             raise ValueError(f"Unsupported input type: {self.input}")
@@ -60,13 +75,12 @@ class Config:
         if self.input_type == InputType.DIRECTORY:
             name = self.input.name
         else:
-            name = self.input.stem.split("_")[0]  # Use only the first part of the filename
+            name = self.input.stem.split("_")[
+                0
+            ]  # Use only the first part of the filename
 
         model_name = self.model.name.split("/")[-1]
         base_name = f"{name}_{model_name}_step{self.frame_step}"
-
-        if self.model.tile_size:
-            base_name += f"_tile{self.model.tile_size}"
 
         return base_name
 
@@ -81,8 +95,6 @@ class Config:
         if self.input_type == InputType.DIRECTORY:
             model_name = self.model.name.split("/")[-1]
             subdir_name = f"{model_name}_step{self.frame_step}"
-            if self.model.tile_size:
-                subdir_name += f"_tile{self.model.tile_size}"
             self.output_dir = self.output_dir / subdir_name
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -101,20 +113,26 @@ class Config:
         with open(config_path, "r") as f:
             config_dict = yaml.safe_load(f)
 
-        model_config = ModelConfig(**config_dict["model"])
+        # Convert string paths back to Path objects
+        if 'input' in config_dict:
+            config_dict['input'] = Path(config_dict['input'])
+        if 'output_dir' in config_dict:
+            config_dict['output_dir'] = Path(config_dict['output_dir'])
+
+        model_config = ModelConfig(**config_dict.get("model", {}))
         vis_config = VisualizationConfig(**config_dict.get("visualization", {}))
 
         return cls(
-            input=Path(config_dict["input"]),
-            output_dir=Path(config_dict.get("output_dir", "")) if config_dict.get("output_dir") else None,
-            output_prefix=config_dict.get("output_prefix"),
-            model=model_config,
-            frame_step=config_dict.get("frame_step", 1),
-            save_raw_segmentation=config_dict.get("save_raw_segmentation", True),
-            save_colored_segmentation=config_dict.get("save_colored_segmentation", False),
-            save_overlay=config_dict.get("save_overlay", True),
-            visualization=vis_config,
-        )
+                input=config_dict["input"],
+                output_dir=config_dict.get("output_dir"),
+                output_prefix=config_dict.get("output_prefix"),
+                model=model_config,
+                frame_step=config_dict.get("frame_step", 1),
+                save_raw_segmentation=config_dict.get("save_raw_segmentation", True),
+                save_colored_segmentation=config_dict.get("save_colored_segmentation", False),
+                save_overlay=config_dict.get("save_overlay", True),
+                visualization=vis_config,
+                )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -136,7 +154,7 @@ if __name__ == "__main__":
     # config = Config.from_yaml(Path("config.yaml"))
     model_config = ModelConfig(
         name="facebook/mask2former-swin-large-mapillary-vistas-semantic",
-        )
+    )
     config = Config(
         input=Path("/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs"),
         output_dir=None,
@@ -147,5 +165,5 @@ if __name__ == "__main__":
         save_colored_segmentation=False,
         save_overlay=True,
         visualization=VisualizationConfig(alpha=0.5, colormap="default"),
-        )
+    )
     print(config.to_dict())

@@ -1,9 +1,13 @@
+import csv
+import json
 import logging
 from pathlib import Path
-from typing import List, Union, Optional
+from typing import List, Tuple, Union, Optional
 
 import cv2
+import h5py
 import numpy as np
+import pandas as pd
 from loguru import logger
 from tqdm.auto import tqdm
 from PIL import Image
@@ -13,14 +17,9 @@ from .exceptions import InputError, ProcessingError
 from .pipeline import create_segmentation_pipeline
 from .utils import (
     analyze_segmentation_map,
-    append_to_csv_files,
-    generate_category_stats,
     get_video_files,
-    initialize_csv_files,
-    save_colored_segmentation,
-    save_overlay,
-    save_segmentation_map,
 )
+
 
 class TqdmCompatibleSink:
     def __init__(self, level=logging.INFO):
@@ -29,9 +28,11 @@ class TqdmCompatibleSink:
     def write(self, message):
         tqdm.write(message, end="")
 
+
 logger.remove()
 logger.add(TqdmCompatibleSink(), format="{time} | {level} | {message}", level="INFO")
 logger.add("file_{time}.log", rotation="1 day")
+
 
 class SegmentationProcessor:
     def __init__(self, config: Config):
@@ -58,11 +59,13 @@ class SegmentationProcessor:
         try:
             image = Image.open(self.config.input).convert("RGB")
             if self.config.model.max_size:
-                image.thumbnail((self.config.model.max_size, self.config.model.max_size))
+                image.thumbnail(
+                    (self.config.model.max_size, self.config.model.max_size)
+                )
 
             result = self.pipeline([image])[0]
             self.save_results(image, result)
-            self.analyze_results(result['seg_map'])
+            self.analyze_results(result["seg_map"])
 
             self.logger.info("Image processing complete")
         except Exception as e:
@@ -72,27 +75,100 @@ class SegmentationProcessor:
     def process_video(self):
         self.logger.info(f"Processing video: {self.config.input}")
         try:
-            cap, frame_count, original_fps, width, height = self._initialize_video_capture()
-            output_fps = self.config.output_fps or int(original_fps / self.config.frame_step)
-            video_writers = self._initialize_video_writers(width, height, output_fps)
+            output_path = self.config.get_output_path()
+            hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
 
-            results = []
-            for batch in tqdm(self._frame_generator(cap), total=frame_count // self.config.frame_step):
-                batch_results = self._process_batch(batch)
-                results.extend(batch_results)
-                self._write_output_frames(batch, batch_results, video_writers)
+            if (
+                not self.config.force_reprocess
+                and hdf_path.exists()
+                and self.verify_hdf_file(hdf_path)
+            ):
+                self.logger.info(f"Found valid existing segmentation file: {hdf_path}")
+                segmentation_data, metadata = self.load_hdf_file(hdf_path)
+            else:
+                if hdf_path.exists():
+                    if self.config.force_reprocess:
+                        self.logger.info(
+                            "Force reprocessing enabled. Reprocessing video."
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Existing segmentation file is invalid or incomplete: {hdf_path}"
+                        )
+                segmentation_data, metadata = self.process_video_frames()
+                self.save_hdf_file(hdf_path, segmentation_data, metadata)
 
-            cap.release()
-            for writer in video_writers.values():
-                writer.release()
-
-            self.save_video_results(results)
-            self.analyze_video_results(results)
+            self.generate_output_videos(segmentation_data, metadata)
+            self.analyze_results(segmentation_data, metadata)
 
             self.logger.info("Video processing complete")
         except Exception as e:
             self.logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
+
+    def verify_hdf_file(self, file_path: Path) -> bool:
+        try:
+            with h5py.File(file_path, "r") as f:
+                if "segmentation" not in f or "metadata" not in f:
+                    return False
+
+                metadata = dict(f["metadata"].attrs)
+                if "frame_count" not in metadata or "frame_step" not in metadata:
+                    return False
+
+                saved_frame_count = metadata["frame_count"]
+                saved_frame_step = metadata["frame_step"]
+
+                if saved_frame_step != self.config.frame_step:
+                    return False
+
+                cap = cv2.VideoCapture(str(self.config.input))
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap.release()
+                expected_frame_count = (
+                    total_frames + self.config.frame_step - 1
+                ) // self.config.frame_step
+
+                if saved_frame_count != expected_frame_count:
+                    return False
+
+                if len(f["segmentation"]) != saved_frame_count:
+                    return False
+
+                return True
+        except Exception as e:
+            self.logger.error(f"Error verifying HDF file: {str(e)}")
+            return False
+
+    def process_video_frames(self):
+        cap = cv2.VideoCapture(str(self.config.input))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+
+        segmentation_data = []
+        for batch in tqdm(
+            self._frame_generator(cv2.VideoCapture(str(self.config.input))),
+            total=total_frames // self.config.frame_step,
+            desc="Processing frames",
+        ):
+            batch_results = self._process_batch(batch)
+            segmentation_data.extend([result["seg_map"] for result in batch_results])
+
+        metadata = {
+            "model_name": self.config.model.name,
+            "original_video_path": str(self.config.input),
+            "palette": self.pipeline.palette.tolist()
+            if self.pipeline.palette is not None
+            else None,
+            "label_ids": self.pipeline.model.config.id2label,
+            "frame_count": len(segmentation_data),
+            "frame_step": self.config.frame_step,
+            "total_video_frames": total_frames,
+            "fps": fps,
+        }
+
+        return np.array(segmentation_data), metadata
 
     def _initialize_video_capture(self):
         cap = cv2.VideoCapture(str(self.config.input))
@@ -105,15 +181,19 @@ class SegmentationProcessor:
     def _initialize_video_writers(self, width, height, fps):
         writers = {}
         output_base = self.config.get_output_path()
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
         if self.config.save_colored_segmentation:
             colored_path = output_base.with_name(f"{output_base.stem}_colored.mp4")
-            writers['colored'] = cv2.VideoWriter(str(colored_path), fourcc, fps, (width, height))
+            writers["colored"] = cv2.VideoWriter(
+                str(colored_path), fourcc, fps, (width, height)
+            )
 
         if self.config.save_overlay:
             overlay_path = output_base.with_name(f"{output_base.stem}_overlay.mp4")
-            writers['overlay'] = cv2.VideoWriter(str(overlay_path), fourcc, fps, (width, height))
+            writers["overlay"] = cv2.VideoWriter(
+                str(overlay_path), fourcc, fps, (width, height)
+            )
 
         return writers
 
@@ -122,14 +202,169 @@ class SegmentationProcessor:
 
     def _write_output_frames(self, batch, batch_results, video_writers):
         for pil_image, result in zip(batch, batch_results):
-            if 'colored' in video_writers:
-                colored_seg = self.visualize_segmentation(pil_image, result['seg_map'], result['palette'], colored_only=True)
-                video_writers['colored'].write(cv2.cvtColor(np.array(colored_seg), cv2.COLOR_RGB2BGR))
-            if 'overlay' in video_writers:
-                overlay = self.visualize_segmentation(pil_image, result['seg_map'], result['palette'], colored_only=False)
-                video_writers['overlay'].write(cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR))
+            if "colored" in video_writers:
+                colored_seg = self.visualize_segmentation(
+                    pil_image, result["seg_map"], result["palette"], colored_only=True
+                )
+                video_writers["colored"].write(
+                    cv2.cvtColor(np.array(colored_seg), cv2.COLOR_RGB2BGR)
+                )
+            if "overlay" in video_writers:
+                overlay = self.visualize_segmentation(
+                    pil_image, result["seg_map"], result["palette"], colored_only=False
+                )
+                video_writers["overlay"].write(
+                    cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR)
+                )
 
-    def visualize_segmentation(self, image: Image.Image, seg_map: np.ndarray, palette: Optional[np.ndarray], colored_only: bool = False) -> np.ndarray:
+    def save_hdf_file(self, file_path: Path, segmentation_data: np.ndarray, metadata: dict):
+        with h5py.File(file_path, 'w') as f:
+            f.create_dataset('segmentation', data=segmentation_data, compression='gzip')
+
+            # Convert all metadata to JSON-compatible format
+            json_metadata = json.dumps(metadata)
+            f.create_dataset('metadata', data=json_metadata)
+
+    def load_hdf_file(self, file_path: Path) -> Tuple[np.ndarray, dict]:
+        with h5py.File(file_path, 'r') as f:
+            segmentation_data = f['segmentation'][:]
+            json_metadata = f['metadata'][()]
+            metadata = json.loads(json_metadata)
+        return segmentation_data, metadata
+
+    def generate_output_videos(self, segmentation_data: np.ndarray, metadata: dict):
+        output_path = self.config.get_output_path()
+        fps = metadata["fps"]
+        frame_step = metadata["frame_step"]
+
+        if self.config.save_colored_segmentation:
+            self._generate_video(
+                segmentation_data,
+                metadata,
+                output_path.with_name(f"{output_path.stem}_colored.mp4"),
+                colored_only=True,
+                fps=fps / frame_step,
+            )
+
+        if self.config.save_overlay:
+            self._generate_video(
+                segmentation_data,
+                metadata,
+                output_path.with_name(f"{output_path.stem}_overlay.mp4"),
+                colored_only=False,
+                fps=fps / frame_step,
+            )
+
+    def _generate_video(
+        self,
+        segmentation_data: np.ndarray,
+        metadata: dict,
+        output_path: Path,
+        colored_only: bool,
+        fps: float,
+    ):
+        cap = cv2.VideoCapture(str(self.config.input))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+
+        frame_index = 0
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if frame_index % metadata["frame_step"] == 0:
+                seg_index = frame_index // metadata["frame_step"]
+                if seg_index >= len(segmentation_data):
+                    break
+
+                seg_map = segmentation_data[seg_index]
+                if colored_only:
+                    output_frame = self.visualize_segmentation(
+                        frame, seg_map, metadata["palette"], colored_only=True
+                    )
+                else:
+                    output_frame = self.visualize_segmentation(
+                        frame, seg_map, metadata["palette"], colored_only=False
+                    )
+
+                out.write(cv2.cvtColor(output_frame, cv2.COLOR_RGB2BGR))
+
+            frame_index += 1
+
+        cap.release()
+        out.release()
+
+    def analyze_results(self, segmentation_data: np.ndarray, metadata: dict):
+        output_path = self.config.get_output_path()
+        counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
+        percentages_file = output_path.with_name(
+            f"{output_path.stem}_category_percentages.csv"
+        )
+
+        id2label = metadata["label_ids"]
+        headers = ["Frame"] + [id2label[i] for i in sorted(id2label.keys())]
+
+        with open(counts_file, "w", newline="") as cf, open(
+            percentages_file, "w", newline=""
+        ) as pf:
+            counts_writer = csv.writer(cf)
+            percentages_writer = csv.writer(pf)
+            counts_writer.writerow(headers)
+            percentages_writer.writerow(headers)
+
+            for frame_idx, seg_map in enumerate(segmentation_data):
+                analysis = analyze_segmentation_map(seg_map, len(id2label))
+                frame_number = frame_idx * metadata["frame_step"]
+
+                counts_row = [frame_number] + [
+                    analysis[i][0] for i in sorted(analysis.keys())
+                ]
+                percentages_row = [frame_number] + [
+                    analysis[i][1] for i in sorted(analysis.keys())
+                ]
+
+                counts_writer.writerow(counts_row)
+                percentages_writer.writerow(percentages_row)
+
+        self._generate_category_stats(
+            counts_file, output_path.with_name(f"{output_path.stem}_counts_stats.csv")
+        )
+        self._generate_category_stats(
+            percentages_file,
+            output_path.with_name(f"{output_path.stem}_percentages_stats.csv"),
+        )
+
+    def _generate_category_stats(self, input_file: Path, output_file: Path):
+        df = pd.read_csv(input_file)
+        category_columns = df.columns[1:]
+
+        stats = []
+        for category in category_columns:
+            category_data = df[category]
+            stats.append(
+                {
+                    "Category": category,
+                    "Mean": category_data.mean(),
+                    "Median": category_data.median(),
+                    "Std Dev": category_data.std(),
+                    "Min": category_data.min(),
+                    "Max": category_data.max(),
+                }
+            )
+
+        pd.DataFrame(stats).to_csv(output_file, index=False)
+
+    def visualize_segmentation(
+        self,
+        image: Image.Image,
+        seg_map: np.ndarray,
+        palette: Optional[np.ndarray],
+        colored_only: bool = False,
+    ) -> np.ndarray:
         if palette is None:
             palette = self._generate_palette(len(np.unique(seg_map)))
 
@@ -161,7 +396,6 @@ class SegmentationProcessor:
                 break
             yield frames
 
-
     def _generate_palette(self, num_colors):
         def _generate_color(i):
             r = int((i * 100) % 255)
@@ -170,51 +404,6 @@ class SegmentationProcessor:
             return [r, g, b]
 
         return np.array([_generate_color(i) for i in range(num_colors)])
-
-    def save_results(self, image: Image.Image, result: dict):
-        output_path = self.config.get_output_path()
-
-        if self.config.save_raw_segmentation:
-            save_segmentation_map(result['seg_map'], output_path)
-
-        if self.config.save_colored_segmentation:
-            colored_seg = self.visualize_segmentation(image, result['seg_map'], result['palette'])
-            save_colored_segmentation(colored_seg, output_path)
-
-        if self.config.save_overlay:
-            overlay = self.visualize_segmentation(image, result['seg_map'], result['palette'])
-            save_overlay(overlay, output_path)
-
-    def save_video_results(self, results: List[dict]):
-        output_path = self.config.get_output_path()
-
-        if self.config.save_raw_segmentation:
-            for i, result in enumerate(results):
-                save_segmentation_map(result['seg_map'], output_path, frame_count=i)
-
-    def analyze_results(self, seg_map: np.ndarray):
-        analysis = analyze_segmentation_map(seg_map, len(self.pipeline.model.config.id2label))
-        output_path = self.config.get_output_path()
-        counts_file, percentages_file = initialize_csv_files(
-            output_path, self.pipeline.model.config.id2label
-        )
-        append_to_csv_files(counts_file, percentages_file, 0, analysis)
-
-    def analyze_video_results(self, results: List[dict]):
-        output_path = self.config.get_output_path()
-        counts_file, percentages_file = initialize_csv_files(
-            output_path, self.pipeline.model.config.id2label
-        )
-
-        for i, result in enumerate(results):
-            analysis = analyze_segmentation_map(result['seg_map'], len(self.pipeline.model.config.id2label))
-            append_to_csv_files(counts_file, percentages_file, i * self.config.frame_step, analysis)
-
-        counts_stats = generate_category_stats(counts_file)
-        counts_stats.to_csv(output_path.with_name(f"{output_path.stem}_counts_stats.csv"), index=False)
-
-        percentages_stats = generate_category_stats(percentages_file)
-        percentages_stats.to_csv(output_path.with_name(f"{output_path.stem}_percentages_stats.csv"), index=False)
 
 
 class DirectoryProcessor:
@@ -229,7 +418,9 @@ class DirectoryProcessor:
         )
 
     def process(self):
-        self.logger.info("Starting directory processing", input_path=str(self.config.input))
+        self.logger.info(
+            "Starting directory processing", input_path=str(self.config.input)
+        )
 
         video_files = self.get_video_files()
         if not video_files:
@@ -245,10 +436,14 @@ class DirectoryProcessor:
                 self.process_single_video(video_file, output_dir)
                 self.logger.info("Video processed", video_file=str(video_file))
             except Exception as e:
-                self.logger.error("Error processing video", video_file=str(video_file), error=str(e))
+                self.logger.error(
+                    "Error processing video", video_file=str(video_file), error=str(e)
+                )
                 self.logger.debug("Error details", exc_info=True)
 
-        self.logger.info("Finished processing all videos", input_directory=str(self.config.input))
+        self.logger.info(
+            "Finished processing all videos", input_directory=str(self.config.input)
+        )
 
     def get_video_files(self) -> List[Path]:
         video_files = get_video_files(self.config.input)
@@ -264,7 +459,9 @@ class DirectoryProcessor:
             processor = SegmentationProcessor(video_config)
             processor.process()
         except Exception as e:
-            self.logger.error("Error in video processing", video_file=str(video_file), error=str(e))
+            self.logger.error(
+                "Error in video processing", video_file=str(video_file), error=str(e)
+            )
             raise ProcessingError(f"Error processing video {video_file}: {str(e)}")
 
     def create_video_config(self, video_file: Path, output_dir: Path) -> Config:
@@ -280,7 +477,10 @@ class DirectoryProcessor:
             visualization=self.config.visualization,
         )
 
-def create_processor(config: Config) -> Union[SegmentationProcessor, DirectoryProcessor]:
+
+def create_processor(
+    config: Config,
+) -> Union[SegmentationProcessor, DirectoryProcessor]:
     if config.input_type == InputType.DIRECTORY:
         return DirectoryProcessor(config)
     else:

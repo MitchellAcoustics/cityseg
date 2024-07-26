@@ -1,12 +1,12 @@
 # %%
 
-from typing import Dict, Any, Union, List
 import numpy as np
 from transformers import ImageSegmentationPipeline
 from PIL import Image
 from cityscape_seg.palettes import ADE20K_PALETTE
 import cv2
 from tqdm.auto import tqdm
+
 
 class SingleMapImageSegmentationPipeline(ImageSegmentationPipeline):
     def __init__(self, *args, **kwargs):
@@ -15,19 +15,21 @@ class SingleMapImageSegmentationPipeline(ImageSegmentationPipeline):
 
     def _get_palette(self):
         # Try to get the palette from the model's config
-        if hasattr(self.model.config, 'palette'):
+        if hasattr(self.model.config, "palette"):
             return np.array(self.model.config.palette)
-        elif 'ade' in self.model.config._name_or_path:
+        elif "ade" in self.model.config._name_or_path:
             return np.array(ADE20K_PALETTE)
         # If not found, try to generate a palette based on the number of labels
-        elif hasattr(self.model.config, 'num_labels'):
+        elif hasattr(self.model.config, "num_labels"):
             num_labels = self.model.config.num_labels
             return self._generate_palette(num_labels)
 
         # If still not found, fall back to a default palette or raise an error
         else:
             print("Warning: Unable to determine palette. Using a default palette.")
-            return self._generate_palette(256)  # Generate a default palette with 256 colors
+            return self._generate_palette(
+                256
+            )  # Generate a default palette with 256 colors
 
     def _generate_palette(self, num_colors):
         def _generate_color(i):
@@ -41,18 +43,20 @@ class SingleMapImageSegmentationPipeline(ImageSegmentationPipeline):
     def create_single_segmentation_map(self, annotations, target_size):
         seg_map = np.zeros(target_size, dtype=np.int32)
         for annotation in annotations:
-            mask = np.array(annotation['mask'])
-            label_id = self.model.config.label2id[annotation['label']]
+            mask = np.array(annotation["mask"])
+            label_id = self.model.config.label2id[annotation["label"]]
             seg_map[mask != 0] = label_id
 
         return {
-            'seg_map' : seg_map,
-            'label2id': self.model.config.label2id,
-            'id2label': self.model.config.id2label,
-            'palette' : self.palette
-            }
+            "seg_map": seg_map,
+            "label2id": self.model.config.label2id,
+            "id2label": self.model.config.id2label,
+            "palette": self.palette,
+        }
 
-    def visualize_segmentation(self, image: Image.Image, seg_map: np.ndarray) -> np.ndarray:
+    def visualize_segmentation(
+        self, image: Image.Image, seg_map: np.ndarray
+    ) -> np.ndarray:
         image_array = np.array(image)
         color_seg = np.zeros((seg_map.shape[0], seg_map.shape[1], 3), dtype=np.uint8)
         for label_id, color in enumerate(self.palette):
@@ -71,9 +75,14 @@ class SingleMapImageSegmentationPipeline(ImageSegmentationPipeline):
         """
         if not result:
             return True  # Empty result, assume single image
-        if isinstance(result[0], dict) and 'mask' in result[0]:
+        if isinstance(result[0], dict) and "mask" in result[0]:
             return True  # List of annotations for a single image
-        if isinstance(result[0], list) and result[0] and isinstance(result[0][0], dict) and 'mask' in result[0][0]:
+        if (
+            isinstance(result[0], list)
+            and result[0]
+            and isinstance(result[0][0], dict)
+            and "mask" in result[0][0]
+        ):
             return False  # List of lists of annotations for multiple images
         raise ValueError("Unexpected result structure")
 
@@ -82,14 +91,29 @@ class SingleMapImageSegmentationPipeline(ImageSegmentationPipeline):
 
         if self._is_single_image_result(result):
             # Single image case
-            return self.create_single_segmentation_map(result, result[0]['mask'].size[::-1])
+            return self.create_single_segmentation_map(
+                result, result[0]["mask"].size[::-1]
+            )
         else:
             # Multiple images case
-            return [self.create_single_segmentation_map(img_result, img_result[0]['mask'].size[::-1]) for img_result in result]
+            return [
+                self.create_single_segmentation_map(
+                    img_result, img_result[0]["mask"].size[::-1]
+                )
+                for img_result in result
+            ]
+
 
 # %%
 class VideoSegmentationPipeline(SingleMapImageSegmentationPipeline):
-    def process_video(self, video_path, output_path=None, frame_interval=1, batch_size=16, show_progress=True):
+    def process_video(
+        self,
+        video_path,
+        output_path=None,
+        frame_interval=1,
+        batch_size=16,
+        show_progress=True,
+    ):
         """
         Process a video file in batches and return segmentation maps for each frame.
 
@@ -110,16 +134,22 @@ class VideoSegmentationPipeline(SingleMapImageSegmentationPipeline):
         segmentation_maps = []
 
         if output_path:
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(output_path, fourcc, fps,
-                                  (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                                   int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-                                  )
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            out = cv2.VideoWriter(
+                output_path,
+                fourcc,
+                fps,
+                (
+                    int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                    int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                ),
+            )
 
         if batch_size == -1:
             batch_size = int(frame_count // frame_interval)
-        total_batches = (frame_count + frame_interval * batch_size - 1) // (frame_interval * batch_size)
-
+        total_batches = (frame_count + frame_interval * batch_size - 1) // (
+            frame_interval * batch_size
+        )
 
         if show_progress:
             pbar = tqdm(total=total_batches, desc="Processing video batches")
@@ -152,9 +182,10 @@ class VideoSegmentationPipeline(SingleMapImageSegmentationPipeline):
             if output_path:
                 for frame, result in zip(batch_frames, batch_results):
                     # Visualize segmentation and save to output video
-                    vis_frame = self.visualize_segmentation(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)),
-                                                            result['seg_map']
-                                                            )
+                    vis_frame = self.visualize_segmentation(
+                        Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)),
+                        result["seg_map"],
+                    )
                     out.write(cv2.cvtColor(np.array(vis_frame), cv2.COLOR_RGB2BGR))
 
             if show_progress:
@@ -172,8 +203,7 @@ class VideoSegmentationPipeline(SingleMapImageSegmentationPipeline):
 
 if __name__ == "__main__":
     # %%
-    from transformers import AutoModelForSemanticSegmentation, AutoImageProcessor
-    import matplotlib.pyplot as plt
+    from transformers import AutoImageProcessor
 
     # Load model and image processor
     # model = AutoModelForSemanticSegmentation.from_pretrained("microsoft/beit-large-finetuned-ade-640-640")
@@ -209,26 +239,34 @@ if __name__ == "__main__":
     # plt.axis('off')
     # plt.show()
 
-    from transformers import OneFormerForUniversalSegmentation, OneFormerProcessor, Mask2FormerForUniversalSegmentation
+    from transformers import (
+        Mask2FormerForUniversalSegmentation,
+    )
     import torch
 
     # model = AutoModelForSemanticSegmentation.from_pretrained("shi-labs/oneformer_ade20k_swin_large")
     # image_processor = AutoImageProcessor.from_pretrained("shi-labs/oneformer_ade20k_swin_large")
     model = Mask2FormerForUniversalSegmentation.from_pretrained(
-            # "facebook/mask2former-swin-large-ade-semantic",
-            "facebook/mask2former-swin-large-mapillary-vistas-semantic",
-            )
+        # "facebook/mask2former-swin-large-ade-semantic",
+        "facebook/mask2former-swin-large-mapillary-vistas-semantic",
+    )
 
     image_processor = AutoImageProcessor.from_pretrained(
-            # "facebook/mask2former-swin-large-ade-semantic",
-            "facebook/mask2former-swin-large-mapillary-vistas-semantic",
-            )
+        # "facebook/mask2former-swin-large-ade-semantic",
+        "facebook/mask2former-swin-large-mapillary-vistas-semantic",
+    )
 
-    pipe = VideoSegmentationPipeline(model=model, image_processor=image_processor, device=torch.device('mps'),
-                                     subtask='semantic')
+    pipe = VideoSegmentationPipeline(
+        model=model,
+        image_processor=image_processor,
+        device=torch.device("mps"),
+        subtask="semantic",
+    )
 
     video_path = "/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/Carlov2_15s_3840x2160.mov"
     output_path = "/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/output_Carlov2_mask2former_mapillary-vistas.mp4"
 
-    segmentation_maps = pipe.process_video(video_path, output_path, frame_interval=1, batch_size=10, show_progress=True)
+    segmentation_maps = pipe.process_video(
+        video_path, output_path, frame_interval=1, batch_size=10, show_progress=True
+    )
     print(f"Processed {len(segmentation_maps)} frames.")
