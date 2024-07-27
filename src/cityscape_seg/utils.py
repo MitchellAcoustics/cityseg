@@ -1,9 +1,13 @@
+import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
 import pandas as pd
+from loguru import logger
+from tqdm.asyncio import tqdm
 
 
 def analyze_segmentation_map(
@@ -98,3 +102,41 @@ def save_colored_segmentation(
 def save_overlay(overlay: np.ndarray, output_prefix: Path, frame_count: int = None):
     filename = f"{output_prefix.stem}_overlay{'_' + str(frame_count) if frame_count is not None else ''}.png"
     cv2.imwrite(str(output_prefix.with_name(filename)), overlay)
+
+
+def setup_logging(log_level, verbose=False):
+    logger.remove()  # Remove default handler
+
+    # Determine console log level
+    console_level = "DEBUG" if verbose else log_level
+
+    # Console logging
+    console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    logger.add(
+        sys.stderr,
+        format=console_format,
+        level=console_level,
+        colorize=True,
+    )
+
+    # File logging (always at INFO level or lower, JSON format)
+    file_level = min(log_level, "INFO")
+    logger.add(
+        "segmentation.log",
+        format="{message}",
+        level=file_level,
+        rotation="100 MB",
+        retention="1 week",
+        serialize=True,
+    )
+
+    logger.info(f"Logging initialized. Console level: {console_level}, File level: {file_level}")
+
+
+@contextmanager
+def tqdm_context(*args, **kwargs):
+    try:
+        progress_bar = tqdm(*args, **kwargs)
+        yield progress_bar
+    finally:
+        progress_bar.close()

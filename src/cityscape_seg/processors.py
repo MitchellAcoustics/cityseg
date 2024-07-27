@@ -1,6 +1,5 @@
 import csv
 import json
-import logging
 from pathlib import Path
 from typing import List, Tuple, Union, Optional
 
@@ -18,20 +17,7 @@ from .pipeline import create_segmentation_pipeline
 from .utils import (
     analyze_segmentation_map,
     get_video_files,
-)
-
-
-class TqdmCompatibleSink:
-    def __init__(self, level=logging.INFO):
-        self.level = level
-
-    def write(self, message):
-        tqdm.write(message, end="")
-
-
-logger.remove()
-logger.add(TqdmCompatibleSink(), format="{time} | {level} | {message}", level="INFO")
-logger.add("file_{time}.log", rotation="1 day")
+    )
 
 
 class SegmentationProcessor:
@@ -141,19 +127,20 @@ class SegmentationProcessor:
             return False
 
     def process_video_frames(self):
+        # Lazy import of tqdm_context to avoid circular imports
+        from .utils import tqdm_context
         cap = cv2.VideoCapture(str(self.config.input))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         cap.release()
 
         segmentation_data = []
-        for batch in tqdm(
-            self._frame_generator(cv2.VideoCapture(str(self.config.input))),
-            total=total_frames // self.config.frame_step,
-            desc="Processing frames",
-        ):
-            batch_results = self._process_batch(batch)
-            segmentation_data.extend([result["seg_map"] for result in batch_results])
+
+        with tqdm_context(total=total_frames // self.config.frame_step, desc="Processing frames") as pbar:
+            for batch in self._frame_generator(cv2.VideoCapture(str(self.config.input))):
+                batch_results = self._process_batch(batch)
+                segmentation_data.extend([result["seg_map"] for result in batch_results])
+                pbar.update(len(batch))
 
         metadata = {
             "model_name": self.config.model.name,
@@ -238,6 +225,7 @@ class SegmentationProcessor:
         frame_step = metadata["frame_step"]
 
         if self.config.save_colored_segmentation:
+            self.logger.info("Generating colored segmentation video")
             self._generate_video(
                 segmentation_data,
                 metadata,
@@ -247,6 +235,7 @@ class SegmentationProcessor:
             )
 
         if self.config.save_overlay:
+            self.logger.info("Generating overlay video")
             self._generate_video(
                 segmentation_data,
                 metadata,
@@ -295,6 +284,7 @@ class SegmentationProcessor:
 
             frame_index += 1
 
+        self.logger.debug(f"Video saved to: {output_path}")
         cap.release()
         out.release()
 
@@ -418,6 +408,9 @@ class DirectoryProcessor:
         )
 
     def process(self):
+        # Lazy import of tqdm_context
+        from .utils import tqdm_context
+
         self.logger.info(
             "Starting directory processing", input_path=str(self.config.input)
         )
@@ -431,15 +424,18 @@ class DirectoryProcessor:
         self.logger.info("Output directory set", output_dir=str(output_dir))
         self.logger.info("Video files found", count=len(video_files))
 
-        for video_file in tqdm(video_files, desc="Processing videos"):
-            try:
-                self.process_single_video(video_file, output_dir)
-                self.logger.info("Video processed", video_file=str(video_file))
-            except Exception as e:
-                self.logger.error(
-                    "Error processing video", video_file=str(video_file), error=str(e)
-                )
-                self.logger.debug("Error details", exc_info=True)
+        with tqdm_context(total=len(video_files), desc="Processing videos") as pbar:
+            for video_file in video_files:
+                try:
+                    self.process_single_video(video_file, output_dir)
+                    self.logger.info("Video processed", video_file=str(video_file))
+                except Exception as e:
+                    self.logger.error(
+                        "Error processing video", video_file=str(video_file), error=str(e)
+                    )
+                    self.logger.debug("Error details", exc_info=True)
+                finally:
+                    pbar.update(1)
 
         self.logger.info(
             "Finished processing all videos", input_directory=str(self.config.input)
