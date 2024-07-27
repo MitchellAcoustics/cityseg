@@ -216,6 +216,8 @@ class Config:
             output_prefix=config_dict.get("output_prefix"),
             model=model_config,
             frame_step=config_dict.get("frame_step", 1),
+            batch_size=config_dict.get("batch_size", 16),
+            output_fps=config_dict.get("output_fps"),
             save_raw_segmentation=config_dict.get("save_raw_segmentation", True),
             save_colored_segmentation=config_dict.get(
                 "save_colored_segmentation", False
@@ -238,6 +240,8 @@ class Config:
             "output_prefix": self.output_prefix,
             "model": asdict(self.model),
             "frame_step": self.frame_step,
+            "batch_size": self.batch_size,
+            "output_fps": self.output_fps,
             "save_raw_segmentation": self.save_raw_segmentation,
             "save_colored_segmentation": self.save_colored_segmentation,
             "save_overlay": self.save_overlay,
