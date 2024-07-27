@@ -11,7 +11,7 @@ of segmentation statistics.
 import csv
 import json
 from pathlib import Path
-from typing import Iterator, List, Tuple, Union, Optional, Dict, Any
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
 import h5py
@@ -41,6 +41,7 @@ class SegmentationProcessor:
         pipeline (SegmentationPipeline): The segmentation pipeline used for processing.
         logger (Logger): Logger instance for tracking processing events.
     """
+
     def __init__(self, config: Config):
         """
         Initialize the SegmentationProcessor.
@@ -88,8 +89,8 @@ class SegmentationProcessor:
             image = Image.open(self.config.input).convert("RGB")
             if self.config.model.max_size:
                 image.thumbnail(
-                        (self.config.model.max_size, self.config.model.max_size)
-                        )
+                    (self.config.model.max_size, self.config.model.max_size)
+                )
 
             # Run segmentation
             result = self.pipeline([image])[0]
@@ -178,26 +179,28 @@ class SegmentationProcessor:
                 # Verify video name and frame step
                 if original_video != str(self.config.input.name):
                     self.logger.warning(
-                            f"Original video name mismatch: expected {self.config.input}, found {original_video}"
-                            )
+                        f"Original video name mismatch: expected {self.config.input}, found {original_video}"
+                    )
                     return False
 
                 if saved_frame_step != self.config.frame_step:
                     self.logger.warning(
-                            f"Frame step mismatch: expected {self.config.frame_step}, found {saved_frame_step}"
-                            )
+                        f"Frame step mismatch: expected {self.config.frame_step}, found {saved_frame_step}"
+                    )
                     return False
 
                 # Verify frame count
                 cap = cv2.VideoCapture(str(self.config.input))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 cap.release()
-                expected_frame_count = (total_frames + self.config.frame_step - 1) // self.config.frame_step
+                expected_frame_count = (
+                    total_frames + self.config.frame_step - 1
+                ) // self.config.frame_step
 
                 if saved_frame_count != expected_frame_count:
                     self.logger.warning(
-                            f"Frame count mismatch: expected {expected_frame_count}, found {saved_frame_count}"
-                            )
+                        f"Frame count mismatch: expected {expected_frame_count}, found {saved_frame_count}"
+                    )
                     return False
 
                 if len(f["segmentation"]) != saved_frame_count:
@@ -254,7 +257,9 @@ class SegmentationProcessor:
 
         return np.array(segmentation_data), metadata
 
-    def _initialize_video_capture(self) -> Tuple[cv2.VideoCapture, int, float, int, int]:
+    def _initialize_video_capture(
+        self,
+    ) -> Tuple[cv2.VideoCapture, int, float, int, int]:
         """
         Initialize video capture and retrieve video properties.
 
@@ -269,7 +274,9 @@ class SegmentationProcessor:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         return cap, frame_count, original_fps, width, height
 
-    def _initialize_video_writers(self, width: int, height: int, fps: float) -> Dict[str, cv2.VideoWriter]:
+    def _initialize_video_writers(
+        self, width: int, height: int, fps: float
+    ) -> Dict[str, cv2.VideoWriter]:
         """
         Initialize video writers for output videos.
 
@@ -311,7 +318,12 @@ class SegmentationProcessor:
         """
         return self.pipeline(batch)
 
-    def _write_output_frames(self, batch: List[Image.Image], batch_results: List[Dict[str, Any]], video_writers: Dict[str, cv2.VideoWriter]) -> None:
+    def _write_output_frames(
+        self,
+        batch: List[Image.Image],
+        batch_results: List[Dict[str, Any]],
+        video_writers: Dict[str, cv2.VideoWriter],
+    ) -> None:
         """
         Write processed frames to output video files.
 
@@ -371,7 +383,9 @@ class SegmentationProcessor:
             metadata = json.loads(json_metadata)
         return segmentation_data, metadata
 
-    def generate_output_videos(self, segmentation_data: np.ndarray, metadata: Dict[str, Any]) -> None:
+    def generate_output_videos(
+        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
+    ) -> None:
         """
         Generate output videos from segmentation data.
 
@@ -457,7 +471,9 @@ class SegmentationProcessor:
         cap.release()
         out.release()
 
-    def analyze_results(self, segmentation_data: np.ndarray, metadata: Dict[str, Any]) -> None:
+    def analyze_results(
+        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
+    ) -> None:
         """
         Analyze segmentation results and generate statistics.
 
@@ -519,15 +535,15 @@ class SegmentationProcessor:
         for category in category_columns:
             category_data = df[category]
             stats.append(
-                    {
-                        "Category": category,
-                        "Mean"    : category_data.mean(),
-                        "Median"  : category_data.median(),
-                        "Std Dev" : category_data.std(),
-                        "Min"     : category_data.min(),
-                        "Max"     : category_data.max(),
-                        }
-                    )
+                {
+                    "Category": category,
+                    "Mean": category_data.mean(),
+                    "Median": category_data.median(),
+                    "Std Dev": category_data.std(),
+                    "Min": category_data.min(),
+                    "Max": category_data.max(),
+                }
+            )
 
         pd.DataFrame(stats).to_csv(output_file, index=False)
 
@@ -604,6 +620,7 @@ class SegmentationProcessor:
         Returns:
             np.ndarray: The generated color palette.
         """
+
         def _generate_color(i: int) -> List[int]:
             r = int((i * 100) % 255)
             g = int((i * 150) % 255)
@@ -624,6 +641,7 @@ class DirectoryProcessor:
         config (Config): Configuration object containing processing parameters.
         logger (Logger): Logger instance for tracking processing events.
     """
+
     def __init__(self, config: Config):
         """
         Initialize the DirectoryProcessor.

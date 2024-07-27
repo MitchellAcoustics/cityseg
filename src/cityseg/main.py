@@ -11,13 +11,13 @@ from pathlib import Path
 from loguru import logger
 
 from cityseg.config import Config
-from cityseg.processors import create_processor
 from cityseg.exceptions import (
     ConfigurationError,
     InputError,
     ModelError,
     ProcessingError,
 )
+from cityseg.processors import create_processor
 from cityseg.utils import setup_logging
 
 

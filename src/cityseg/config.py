@@ -4,6 +4,7 @@ This module defines the configuration classes and utilities for the semantic seg
 It includes classes for input type enumeration, model configuration, visualization configuration,
 and the main configuration class that encapsulates all settings for the segmentation process.
 """
+
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -14,6 +15,7 @@ import yaml
 
 class InputType(Enum):
     """Enumeration of supported input types for the segmentation pipeline."""
+
     SINGLE_IMAGE = "single_image"
     SINGLE_VIDEO = "single_video"
     DIRECTORY = "directory"
@@ -30,6 +32,7 @@ class ModelConfig:
         max_size (Optional[int]): The maximum size for input image resizing.
         device (Optional[str]): The device to use for processing (e.g., 'cpu', 'cuda').
     """
+
     name: str
     model_type: Optional[str] = (
         None  # Can be 'oneformer', 'mask2former', or None for auto-detection
@@ -50,6 +53,7 @@ class VisualizationConfig:
         alpha (float): The alpha value for blending the segmentation mask with the original image.
         colormap (str): The colormap to use for visualizing the segmentation mask.
     """
+
     alpha: float = 0.5
     colormap: str = "default"
 
@@ -78,6 +82,7 @@ class Config:
         input_type (InputType): The type of input (automatically determined).
         force_reprocess (bool): Whether to force reprocessing of existing results.
     """
+
     input: Union[Path, str]
     output_dir: Optional[Path]
     output_prefix: Optional[str]
@@ -106,14 +111,14 @@ class Config:
 
     def _determine_input_type(self) -> InputType:
         """
-         Determine the type of input based on the input path.
+        Determine the type of input based on the input path.
 
-         Returns:
-             InputType: The determined input type.
+        Returns:
+            InputType: The determined input type.
 
-         Raises:
-             ValueError: If the input type is not supported.
-         """
+        Raises:
+            ValueError: If the input type is not supported.
+        """
         if self.input.is_dir():
             return InputType.DIRECTORY
         elif self.input.suffix.lower() in [".mp4", ".avi", ".mov"]:
@@ -140,7 +145,9 @@ class Config:
         if self.input_type == InputType.DIRECTORY:
             name = self.input.name
         else:
-            name = self.input.stem.split("_")[0]  # Use only the first part of the filename
+            name = self.input.stem.split("_")[
+                0
+            ]  # Use only the first part of the filename
 
         model_name = self.model.name.split("/")[-1]
         base_name = f"{name}_{model_name}_step{self.frame_step}"
@@ -238,4 +245,3 @@ class Config:
             "input_type": self.input_type.value,
             "force_reprocess": self.force_reprocess,
         }
-

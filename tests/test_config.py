@@ -1,7 +1,8 @@
-import pytest
 from pathlib import Path
+
+import pytest
 import yaml
-from cityseg.config import InputType, ModelConfig, VisualizationConfig, Config
+from cityseg.config import Config, InputType, ModelConfig, VisualizationConfig
 
 
 @pytest.fixture

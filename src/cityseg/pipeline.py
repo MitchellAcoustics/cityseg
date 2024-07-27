@@ -7,15 +7,17 @@ create detailed segmentation maps with associated metadata.
 """
 
 from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
+import torch
 from PIL.Image import Image
 from transformers import (
-    ImageSegmentationPipeline,
-    AutoModelForSemanticSegmentation,
     AutoImageProcessor,
+    AutoModelForSemanticSegmentation,
+    ImageSegmentationPipeline,
+    Mask2FormerForUniversalSegmentation,
+    OneFormerProcessor,
 )
-from transformers import OneFormerProcessor, Mask2FormerForUniversalSegmentation
-import torch
 
 
 class SegmentationPipeline(ImageSegmentationPipeline):
@@ -29,6 +31,7 @@ class SegmentationPipeline(ImageSegmentationPipeline):
     Attributes:
         palette (np.ndarray): The color palette used for visualization.
     """
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.palette = self._get_palette()
@@ -53,7 +56,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
         else:
             return None
 
-    def create_single_segmentation_map(self, annotations: List[Dict[str, Any]], target_size: tuple) -> Dict[str, Any]:
+    def create_single_segmentation_map(
+        self, annotations: List[Dict[str, Any]], target_size: tuple
+    ) -> Dict[str, Any]:
         """
         Create a single segmentation map from annotations.
 
@@ -77,7 +82,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             "palette": self.palette,
         }
 
-    def _is_single_image_result(self, result: Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]) -> bool:
+    def _is_single_image_result(
+        self, result: Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]
+    ) -> bool:
         """
         Determine if the result is for a single image or multiple images.
 
@@ -103,7 +110,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             return False
         raise ValueError("Unexpected result structure")
 
-    def __call__(self, images: Union[Image, List[Image]], **kwargs: Any) -> List[Dict[str, Any]]:
+    def __call__(
+        self, images: Union[Image, List[Image]], **kwargs: Any
+    ) -> List[Dict[str, Any]]:
         """
         Process the input image(s) and create segmentation map(s).
 
@@ -131,7 +140,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             ]
 
 
-def create_segmentation_pipeline(model_name: str, device: Optional[str] = None, **kwargs: Any) -> SegmentationPipeline:
+def create_segmentation_pipeline(
+    model_name: str, device: Optional[str] = None, **kwargs: Any
+) -> SegmentationPipeline:
     """
     Create and return a SegmentationPipeline instance based on the specified model.
 

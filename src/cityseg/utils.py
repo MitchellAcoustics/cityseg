@@ -9,7 +9,7 @@ throughout the segmentation pipeline to support various processing tasks.
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Iterator, Any
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -73,7 +73,9 @@ def generate_category_stats(csv_file_path: Path) -> pd.DataFrame:
     return pd.DataFrame(stats)
 
 
-def initialize_csv_files(output_prefix: Path, category_names: Dict[int, str]) -> Tuple[Path, Path]:
+def initialize_csv_files(
+    output_prefix: Path, category_names: Dict[int, str]
+) -> Tuple[Path, Path]:
     """
     Initialize CSV files for storing category counts and percentages.
 
@@ -171,7 +173,9 @@ def save_colored_segmentation(
     )
 
 
-def save_overlay(overlay: np.ndarray, output_prefix: Path, frame_count: Optional[int] = None) -> None:
+def save_overlay(
+    overlay: np.ndarray, output_prefix: Path, frame_count: Optional[int] = None
+) -> None:
     """
     Save an overlay image as a file.
 

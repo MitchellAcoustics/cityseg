@@ -5,6 +5,7 @@ These exceptions are used to provide more specific error handling and
 messaging throughout the application.
 """
 
+
 class ConfigurationError(Exception):
     """
     Exception raised for errors in the configuration.
