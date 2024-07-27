@@ -9,3 +9,13 @@ wheels/
 # venv
 .venv
 example_inputs
+
+# IDE files
+.idea/
+src/.DS_Store
+*.log
+.DS_Store
+
+# in progress / trials
+scripts/
+
