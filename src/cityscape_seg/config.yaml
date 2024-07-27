@@ -1,5 +1,5 @@
 # Input configuration
-input: "/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/Carlov2_15s_3840x2160.mov"
+input: "/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs"
 output_dir: "/Users/mitch/Documents/GitHub/cityscape-seg/example_inputs/output"
 #output_prefix: "segmentation_result"
 

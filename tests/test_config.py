@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 import yaml
 from cityscape_seg.config import InputType, ModelConfig, VisualizationConfig, Config
-from cityscape_seg.exceptions import ConfigurationError
+
 
 @pytest.fixture
 def temp_file(tmp_path):
@@ -10,7 +10,9 @@ def temp_file(tmp_path):
         file_path = tmp_path / filename
         file_path.touch()
         return file_path
+
     return _temp_file
+
 
 @pytest.fixture
 def temp_directory(tmp_path):
@@ -18,9 +20,13 @@ def temp_directory(tmp_path):
     dir_path.mkdir()
     return dir_path
 
+
 @pytest.fixture
 def model_config():
-    return ModelConfig(name="test_model", model_type="oneformer", max_size=1024, device="cuda")
+    return ModelConfig(
+        name="test_model", model_type="oneformer", max_size=1024, device="cuda"
+    )
+
 
 @pytest.fixture
 def visualization_config():
@@ -28,39 +34,43 @@ def visualization_config():
 
 
 class TestConfig:
-    def test_config_determines_input_type_correctly(self, temp_file, temp_directory, model_config, tmp_path):
+    def test_config_determines_input_type_correctly(
+        self, temp_file, temp_directory, model_config, tmp_path
+    ):
         image_config = Config(
-                input=temp_file("test.jpg"),
-                output_dir=tmp_path / "output",
-                output_prefix="test_prefix",
-                model=model_config
-                )
+            input=temp_file("test.jpg"),
+            output_dir=tmp_path / "output",
+            output_prefix="test_prefix",
+            model=model_config,
+        )
         video_config = Config(
-                input=temp_file("test.mp4"),
-                output_dir=tmp_path / "output",
-                output_prefix="test_prefix",
-                model=model_config
-                )
+            input=temp_file("test.mp4"),
+            output_dir=tmp_path / "output",
+            output_prefix="test_prefix",
+            model=model_config,
+        )
         dir_config = Config(
-                input=temp_directory,
-                output_dir=tmp_path / "output",
-                output_prefix="test_prefix",
-                model=model_config
-                )
+            input=temp_directory,
+            output_dir=tmp_path / "output",
+            output_prefix="test_prefix",
+            model=model_config,
+        )
 
         assert image_config.input_type == InputType.SINGLE_IMAGE
         assert video_config.input_type == InputType.SINGLE_VIDEO
         assert dir_config.input_type == InputType.DIRECTORY
 
-    def test_config_generates_correct_output_paths(self, temp_file, tmp_path, model_config):
+    def test_config_generates_correct_output_paths(
+        self, temp_file, tmp_path, model_config
+    ):
         input_path = temp_file("test_video.mp4")
         output_dir = tmp_path / "output"
         config = Config(
-                input=input_path,
-                output_dir=output_dir,
-                output_prefix="test_prefix",
-                model=model_config
-                )
+            input=input_path,
+            output_dir=output_dir,
+            output_prefix="test_prefix",
+            model=model_config,
+        )
 
         assert config.get_output_path().parent == output_dir
         assert config.get_output_path().name.startswith("test_prefix")
@@ -76,12 +86,12 @@ class TestConfig:
         output_dir.mkdir()
 
         original_config = Config(
-                input=input_file,
-                output_dir=output_dir,
-                output_prefix="test_prefix",
-                model=model_config,
-                visualization=visualization_config
-                )
+            input=input_file,
+            output_dir=output_dir,
+            output_prefix="test_prefix",
+            model=model_config,
+            visualization=visualization_config,
+        )
 
         # Save to YAML
         yaml_path = tmp_path / "config.yaml"
@@ -99,14 +109,16 @@ class TestConfig:
         assert loaded_config.visualization.alpha == original_config.visualization.alpha
 
     @pytest.mark.parametrize("invalid_input", ["nonexistent.txt", "invalid_dir/"])
-    def test_config_raises_error_for_invalid_input(self, invalid_input, model_config, tmp_path):
+    def test_config_raises_error_for_invalid_input(
+        self, invalid_input, model_config, tmp_path
+    ):
         with pytest.raises(ValueError):
             Config(
-                    input=Path(invalid_input),
-                    output_dir=tmp_path / "output",
-                    output_prefix="test_prefix",
-                    model=model_config
-                    )
+                input=Path(invalid_input),
+                output_dir=tmp_path / "output",
+                output_prefix="test_prefix",
+                model=model_config,
+            )
 
     # You might keep one simple test for ModelConfig and VisualizationConfig
     def test_model_and_visualization_config_basic(self):
@@ -127,7 +139,7 @@ class TestDetermineInputType:
             input=input_path,
             output_dir=tmp_path / "output",
             output_prefix="test_prefix",
-            model=model_config
+            model=model_config,
         )
 
     def test_directory_input(self, tmp_path, base_config):
@@ -143,7 +155,9 @@ class TestDetermineInputType:
         config = base_config(video_path)
         assert config.input_type == InputType.SINGLE_VIDEO
 
-    @pytest.mark.parametrize("image_ext", [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"])
+    @pytest.mark.parametrize(
+        "image_ext", [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"]
+    )
     def test_image_input(self, tmp_path, image_ext, base_config):
         image_path = tmp_path / f"test_image{image_ext}"
         image_path.touch()
@@ -153,7 +167,9 @@ class TestDetermineInputType:
     def test_unsupported_input(self, tmp_path, base_config):
         unsupported_path = tmp_path / "unsupported.txt"
         unsupported_path.touch()
-        with pytest.raises(ValueError, match=f"Unsupported input type: {unsupported_path}"):
+        with pytest.raises(
+            ValueError, match=f"Unsupported input type: {unsupported_path}"
+        ):
             base_config(unsupported_path)
 
     def test_nonexistent_input(self, tmp_path, base_config):
@@ -167,6 +183,7 @@ class TestDetermineInputType:
         config = base_config(upper_case_path)
         assert config.input_type == InputType.SINGLE_IMAGE
 
+
 class TestGenerateOutputPrefix:
     @pytest.fixture
     def base_config(self, tmp_path):
@@ -177,29 +194,40 @@ class TestGenerateOutputPrefix:
                 output_dir=tmp_path / "output",
                 output_prefix=None,
                 model=model_config,
-                frame_step=frame_step
+                frame_step=frame_step,
             )
+
         return _config
 
-    @pytest.mark.parametrize("input_name, model_name, frame_step, expected", [
-        ("input_dir", "model", 1, "input_dir_model_step1"),
-        ("input_dir", "model", 5, "input_dir_model_step5"),
-        ("input_dir", "org/model", 1, "input_dir_model_step1"),
-        ("input_dir", "org/model", 5, "input_dir_model_step5"),
-    ])
-    def test_directory_input(self, tmp_path, base_config, input_name, model_name, frame_step, expected):
+    @pytest.mark.parametrize(
+        "input_name, model_name, frame_step, expected",
+        [
+            ("input_dir", "model", 1, "input_dir_model_step1"),
+            ("input_dir", "model", 5, "input_dir_model_step5"),
+            ("input_dir", "org/model", 1, "input_dir_model_step1"),
+            ("input_dir", "org/model", 5, "input_dir_model_step5"),
+        ],
+    )
+    def test_directory_input(
+        self, tmp_path, base_config, input_name, model_name, frame_step, expected
+    ):
         input_dir = tmp_path / input_name
         input_dir.mkdir()
         config = base_config(input_dir, model_name, frame_step)
         assert config.generate_output_prefix() == expected
 
-    @pytest.mark.parametrize("input_name, model_name, frame_step, expected", [
-        ("video_input.mp4", "model", 1, "video_model_step1"),
-        ("video_input_long_name.mp4", "model", 5, "video_model_step5"),
-        ("image_input.jpg", "org/model", 1, "image_model_step1"),
-        ("image_input_long_name.png", "org/model", 5, "image_model_step5"),
-    ])
-    def test_file_input(self, tmp_path, base_config, input_name, model_name, frame_step, expected):
+    @pytest.mark.parametrize(
+        "input_name, model_name, frame_step, expected",
+        [
+            ("video_input.mp4", "model", 1, "video_model_step1"),
+            ("video_input_long_name.mp4", "model", 5, "video_model_step5"),
+            ("image_input.jpg", "org/model", 1, "image_model_step1"),
+            ("image_input_long_name.png", "org/model", 5, "image_model_step5"),
+        ],
+    )
+    def test_file_input(
+        self, tmp_path, base_config, input_name, model_name, frame_step, expected
+    ):
         input_file = tmp_path / input_name
         input_file.touch()
         config = base_config(input_file, model_name, frame_step)

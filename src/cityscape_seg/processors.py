@@ -8,7 +8,6 @@ import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
-from tqdm.auto import tqdm
 from PIL import Image
 
 from .config import Config, InputType
@@ -17,7 +16,7 @@ from .pipeline import create_segmentation_pipeline
 from .utils import (
     analyze_segmentation_map,
     get_video_files,
-    )
+)
 
 
 class SegmentationProcessor:
@@ -96,16 +95,29 @@ class SegmentationProcessor:
         try:
             with h5py.File(file_path, "r") as f:
                 if "segmentation" not in f or "metadata" not in f:
+                    self.logger.warning("HDF file missing required datasets")
                     return False
 
-                metadata = dict(f["metadata"].attrs)
+                json_metadata = f["metadata"][()]
+                metadata = json.loads(json_metadata)
                 if "frame_count" not in metadata or "frame_step" not in metadata:
+                    self.logger.warning("HDF metadata missing required fields")
                     return False
 
+                original_video = metadata["original_video"]
                 saved_frame_count = metadata["frame_count"]
                 saved_frame_step = metadata["frame_step"]
 
+                if original_video != str(self.config.input.name):
+                    self.logger.warning(
+                        f"Original video name mismatch: expected {self.config.input}, found {original_video}"
+                    )
+                    return False
+
                 if saved_frame_step != self.config.frame_step:
+                    self.logger.warning(
+                        f"Frame step mismatch: expected {self.config.frame_step}, found {saved_frame_step}"
+                    )
                     return False
 
                 cap = cv2.VideoCapture(str(self.config.input))
@@ -116,9 +128,13 @@ class SegmentationProcessor:
                 ) // self.config.frame_step
 
                 if saved_frame_count != expected_frame_count:
+                    self.logger.warning(
+                        f"Frame count mismatch: expected {expected_frame_count}, found {saved_frame_count}"
+                    )
                     return False
 
                 if len(f["segmentation"]) != saved_frame_count:
+                    self.logger.warning("Segmentation data length mismatch")
                     return False
 
                 return True
@@ -129,6 +145,7 @@ class SegmentationProcessor:
     def process_video_frames(self):
         # Lazy import of tqdm_context to avoid circular imports
         from .utils import tqdm_context
+
         cap = cv2.VideoCapture(str(self.config.input))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -136,15 +153,21 @@ class SegmentationProcessor:
 
         segmentation_data = []
 
-        with tqdm_context(total=total_frames // self.config.frame_step, desc="Processing frames") as pbar:
-            for batch in self._frame_generator(cv2.VideoCapture(str(self.config.input))):
+        with tqdm_context(
+            total=total_frames // self.config.frame_step, desc="Processing frames"
+        ) as pbar:
+            for batch in self._frame_generator(
+                cv2.VideoCapture(str(self.config.input))
+            ):
                 batch_results = self._process_batch(batch)
-                segmentation_data.extend([result["seg_map"] for result in batch_results])
+                segmentation_data.extend(
+                    [result["seg_map"] for result in batch_results]
+                )
                 pbar.update(len(batch))
 
         metadata = {
             "model_name": self.config.model.name,
-            "original_video_path": str(self.config.input),
+            "original_video": str(self.config.input.name),
             "palette": self.pipeline.palette.tolist()
             if self.pipeline.palette is not None
             else None,
@@ -204,18 +227,20 @@ class SegmentationProcessor:
                     cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR)
                 )
 
-    def save_hdf_file(self, file_path: Path, segmentation_data: np.ndarray, metadata: dict):
-        with h5py.File(file_path, 'w') as f:
-            f.create_dataset('segmentation', data=segmentation_data, compression='gzip')
+    def save_hdf_file(
+        self, file_path: Path, segmentation_data: np.ndarray, metadata: dict
+    ):
+        with h5py.File(file_path, "w") as f:
+            f.create_dataset("segmentation", data=segmentation_data, compression="gzip")
 
             # Convert all metadata to JSON-compatible format
             json_metadata = json.dumps(metadata)
-            f.create_dataset('metadata', data=json_metadata)
+            f.create_dataset("metadata", data=json_metadata)
 
     def load_hdf_file(self, file_path: Path) -> Tuple[np.ndarray, dict]:
-        with h5py.File(file_path, 'r') as f:
-            segmentation_data = f['segmentation'][:]
-            json_metadata = f['metadata'][()]
+        with h5py.File(file_path, "r") as f:
+            segmentation_data = f["segmentation"][:]
+            json_metadata = f["metadata"][()]
             metadata = json.loads(json_metadata)
         return segmentation_data, metadata
 
@@ -431,7 +456,9 @@ class DirectoryProcessor:
                     self.logger.info("Video processed", video_file=str(video_file))
                 except Exception as e:
                     self.logger.error(
-                        "Error processing video", video_file=str(video_file), error=str(e)
+                        "Error processing video",
+                        video_file=str(video_file),
+                        error=str(e),
                     )
                     self.logger.debug("Error details", exc_info=True)
                 finally:
@@ -471,6 +498,7 @@ class DirectoryProcessor:
             save_colored_segmentation=self.config.save_colored_segmentation,
             save_overlay=self.config.save_overlay,
             visualization=self.config.visualization,
+            force_reprocess=self.config.force_reprocess,
         )
 
 

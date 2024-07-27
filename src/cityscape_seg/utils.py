@@ -130,7 +130,9 @@ def setup_logging(log_level, verbose=False):
         serialize=True,
     )
 
-    logger.info(f"Logging initialized. Console level: {console_level}, File level: {file_level}")
+    logger.info(
+        f"Logging initialized. Console level: {console_level}, File level: {file_level}"
+    )
 
 
 @contextmanager

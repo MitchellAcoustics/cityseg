@@ -19,8 +19,16 @@ from cityscape_seg.utils import setup_logging
 def main():
     parser = argparse.ArgumentParser(description="Semantic Segmentation Pipeline")
     parser.add_argument("config", type=str, help="Path to the YAML configuration file")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--log-level", type=str, default="WARNING", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set the logging level")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose logging"
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level",
+    )
     args = parser.parse_args()
 
     setup_logging(args.log_level, args.verbose)
@@ -48,7 +56,6 @@ def main():
         logger.error(f"Processing error: {str(e)}")
     except Exception as e:
         logger.exception(f"Unexpected error: {str(e)}")
-
 
 
 if __name__ == "__main__":
@@ -82,7 +89,7 @@ if __name__ == "__main__":
     # processor.process()
     # logger.info("Processing completed successfully")
     import warnings
+
     warnings.filterwarnings("ignore")
-    import sys
-    # sys.argv = ["", "config.yaml", "--log-level", "DEBUG"]
+
     main()
