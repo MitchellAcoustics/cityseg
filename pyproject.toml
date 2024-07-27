@@ -1,7 +1,7 @@
 [project]
-name = "cityscape-seg"
-version = "0.1.0"
-description = "Add your description here"
+name = "cityseg"
+version = "0.2.0"
+description = "A flexible and efficient semantic segmentation pipeline for processing images and videos"
 authors = [
     { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" }
 ]
@@ -41,11 +41,12 @@ dev-dependencies = [
     "natten==0.17.1",
     "matplotlib>=3.9.1",
     "yappi>=1.6.0",
+    "black>=24.4.2",
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cityscape_seg"]
+packages = ["src/cityseg"]
 

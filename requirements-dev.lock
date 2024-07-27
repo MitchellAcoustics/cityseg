@@ -31,6 +31,7 @@ babel==2.15.0
     # via mkdocs-material
 beautifulsoup4==4.12.3
     # via nbconvert
+black==24.4.2
 bleach==6.1.0
     # via nbconvert
 bottleneck==1.4.0
@@ -44,6 +45,7 @@ cffi==1.16.0
 charset-normalizer==3.3.2
     # via requests
 click==8.1.7
+    # via black
     # via mkdocs
     # via mkdocstrings
 colorama==0.4.6
@@ -84,7 +86,7 @@ griffe==0.48.0
 h11==0.14.0
     # via httpcore
 h5py==3.11.0
-    # via cityscape-seg
+    # via cityseg
 httpcore==1.0.5
     # via httpx
 httpx==0.27.0
@@ -182,7 +184,7 @@ kiwisolver==1.4.5
 llvmlite==0.43.0
     # via numba
 loguru==0.7.2
-    # via cityscape-seg
+    # via cityseg
 markdown==3.6
     # via mkdocs
     # via mkdocs-autorefs
@@ -232,6 +234,8 @@ mkdocstrings-python==1.10.5
     # via mkdocstrings
 mpmath==1.3.0
     # via sympy
+mypy-extensions==1.0.0
+    # via black
 natten==0.17.1
 nbclient==0.10.0
     # via nbconvert
@@ -259,7 +263,7 @@ numexpr==2.10.1
     # via pandas
 numpy==2.0.1
     # via bottleneck
-    # via cityscape-seg
+    # via cityseg
     # via contourpy
     # via h5py
     # via matplotlib
@@ -271,10 +275,11 @@ numpy==2.0.1
     # via torchvision
     # via transformers
 opencv-python==4.10.0.84
-    # via cityscape-seg
+    # via cityseg
 overrides==7.7.0
     # via jupyter-server
 packaging==24.1
+    # via black
     # via huggingface-hub
     # via ipykernel
     # via jupyter-server
@@ -292,20 +297,22 @@ packaging==24.1
 paginate==0.5.6
     # via mkdocs-material
 pandas==2.2.2
-    # via cityscape-seg
+    # via cityseg
 pandocfilters==1.5.1
     # via nbconvert
 parso==0.8.4
     # via jedi
 pathspec==0.12.1
+    # via black
     # via mkdocs
 pexpect==4.9.0
     # via ipython
 pillow==10.4.0
-    # via cityscape-seg
+    # via cityseg
     # via matplotlib
     # via torchvision
 platformdirs==4.2.2
+    # via black
     # via jupyter-core
     # via mkdocs-get-deps
     # via mkdocstrings
@@ -350,7 +357,7 @@ python-json-logger==2.0.7
 pytz==2024.1
     # via pandas
 pyyaml==6.0.1
-    # via cityscape-seg
+    # via cityseg
     # via huggingface-hub
     # via jupyter-events
     # via jupytext
@@ -396,7 +403,7 @@ rpds-py==0.19.1
 safetensors==0.4.3
     # via transformers
 scipy==1.14.0
-    # via cityscape-seg
+    # via cityseg
 send2trash==1.8.3
     # via jupyter-server
 setuptools==71.1.0
@@ -424,11 +431,11 @@ tinycss2==1.3.0
 tokenizers==0.19.1
     # via transformers
 torch==2.4.0
-    # via cityscape-seg
+    # via cityseg
     # via natten
     # via torchvision
 torchvision==0.19.0
-    # via cityscape-seg
+    # via cityseg
 tornado==6.4.1
     # via ipykernel
     # via jupyter-client
@@ -437,7 +444,7 @@ tornado==6.4.1
     # via notebook
     # via terminado
 tqdm==4.66.4
-    # via cityscape-seg
+    # via cityseg
     # via huggingface-hub
     # via transformers
 traitlets==5.14.3
@@ -457,7 +464,7 @@ traitlets==5.14.3
     # via nbformat
     # via qtconsole
 transformers==4.43.2
-    # via cityscape-seg
+    # via cityseg
 types-python-dateutil==2.9.0.20240316
     # via arrow
 typing-extensions==4.12.2

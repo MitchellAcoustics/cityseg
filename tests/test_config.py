@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 import yaml
-from cityscape_seg.config import InputType, ModelConfig, VisualizationConfig, Config
+from cityseg.config import InputType, ModelConfig, VisualizationConfig, Config
 
 
 @pytest.fixture

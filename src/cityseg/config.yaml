@@ -1,0 +1,29 @@
+# Input configuration
+input: "/Users/mitch/Documents/GitHub/cityseg/example_inputs"
+output_dir: "/Users/mitch/Documents/GitHub/cityseg/example_inputs/output"
+#output_prefix: "segmentation_result"
+
+# Model configuration
+model:
+  name: "facebook/mask2former-swin-large-mapillary-vistas-semantic"
+  model_type: "mask2former"  # Optional: can be 'oneformer', 'mask2former', or null for auto-detection
+  max_size: null  # Optional: maximum size for input images/frames
+  device: "mps"  # Options: "cuda", "cpu", "mps", or null for auto-detection
+
+# Processing configuration
+frame_step: 10  # Process every 5th frame
+batch_size: 15  # Number of frames to process in each batch
+output_fps: null  # Optional: FPS for output video (if different from input)
+
+# Output options
+save_raw_segmentation: true
+save_colored_segmentation: true
+save_overlay: true
+
+# Visualization configuration
+visualization:
+  alpha: 0.5  # Opacity of the segmentation overlay
+  colormap: "default"  # Colormap for segmentation visualization
+
+# Advanced options
+force_reprocess: false  # Set to true to reprocess even if output files exist
