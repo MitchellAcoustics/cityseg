@@ -10,7 +10,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
@@ -89,6 +89,7 @@ class Config:
     output_dir: Optional[Path]
     output_prefix: Optional[str]
     model: ModelConfig
+    ignore_files: Optional[List[str]] = None
     frame_step: int = 1
     batch_size: int = 16
     output_fps: Optional[float] = None
@@ -110,6 +111,7 @@ class Config:
         if not self.input.exists():
             raise ValueError(f"Input path does not exist: {self.input}")
         self.input_type = self._determine_input_type()
+        self.ignore_files = self.ignore_files or []
 
     def _determine_input_type(self) -> InputType:
         """
@@ -217,6 +219,7 @@ class Config:
             output_dir=config_dict.get("output_dir"),
             output_prefix=config_dict.get("output_prefix"),
             model=model_config,
+            ignore_files=config_dict.get("ignore_files", []),
             frame_step=config_dict.get("frame_step", 1),
             batch_size=config_dict.get("batch_size", 16),
             output_fps=config_dict.get("output_fps"),
@@ -241,6 +244,7 @@ class Config:
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "output_prefix": self.output_prefix,
             "model": asdict(self.model),
+            "ignore_files": self.ignore_files,
             "frame_step": self.frame_step,
             "batch_size": self.batch_size,
             "output_fps": self.output_fps,

@@ -945,6 +945,13 @@ class DirectoryProcessor:
 
         with tqdm_context(total=len(video_files), desc="Processing videos") as pbar:
             for video_file in video_files:
+                if video_file.name in self.config.ignore_files:
+                    self.logger.info(
+                        f"Ignoring video file: {str(video_file.name)}",
+                        video_file=str(video_file),
+                    )
+                    pbar.update(1)
+                    continue
                 try:
                     self.process_single_video(video_file, output_dir)
                 except Exception as e:
