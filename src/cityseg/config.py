@@ -41,7 +41,6 @@ class ModelConfig:
     )
     max_size: Optional[int] = None
     device: Optional[str] = None
-    num_workers: Optional[int] = 8
     pipe_batch: Optional[int] = 1
 
     # TODO: impelement model_type auto-detection

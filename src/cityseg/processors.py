@@ -124,7 +124,6 @@ class SegmentationProcessor:
         self.pipeline = create_segmentation_pipeline(
             model_name=config.model.name,
             device=config.model.device,
-            num_workers=config.model.num_workers,
             pipe_batch=config.model.pipe_batch,
         )
         self.logger = logger.bind(
