@@ -149,7 +149,7 @@ class SegmentationProcessor:
             self.logger.debug("Processing history loaded successfully")
             return history
         except Exception as e:
-            self.logger.warning(
+            self.logger.info(
                 f"Failed to load processing history: {str(e)}. Starting with a new history."
             )
             return ProcessingHistory()
