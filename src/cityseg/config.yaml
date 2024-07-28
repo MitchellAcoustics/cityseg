@@ -9,11 +9,12 @@ model:
   model_type: "mask2former"  # Optional: can be 'oneformer', 'mask2former', or null for auto-detection
   max_size: null  # Optional: maximum size for input images/frames
   device: "mps"  # Options: "cuda", "cpu", "mps", or null for auto-detection
+  pipe_batch: 1 # Number of frames to process in parallel within the pipeline
+  num_workers: 8  # Number of workers for data loading
 
 # Processing configuration
 frame_step: 45  # Process every 5th frame
 batch_size: 10  # Number of frames to process in each batch within the processor
-pipe_batch: 2 # Number of frames to process in parallel within the pipeline
 output_fps: null  # Optional: FPS for output video (if different from input)
 
 # Output options
