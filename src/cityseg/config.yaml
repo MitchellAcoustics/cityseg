@@ -26,4 +26,4 @@ visualization:
   colormap: "default"  # Colormap for segmentation visualization
 
 # Advanced options
-force_reprocess: true  # Set to true to reprocess even if output files exist
+force_reprocess: false  # Set to true to reprocess even if output files exist

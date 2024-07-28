@@ -628,7 +628,7 @@ class SegmentationProcessor:
             metadata = json.loads(json_metadata)
         return segmentation_data, metadata
 
-    def generate_output_videos(
+    def generate_colored_video(
         self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
     ) -> None:
         """
@@ -642,25 +642,37 @@ class SegmentationProcessor:
         fps = metadata["fps"]
         frame_step = metadata["frame_step"]
 
-        if self.config.save_colored_segmentation:
-            self.logger.info("Generating colored segmentation video")
-            self._generate_video(
-                segmentation_data,
-                metadata,
-                output_path.with_name(f"{output_path.stem}_colored.mp4"),
-                colored_only=True,
-                fps=fps / frame_step,
-            )
+        self.logger.info("Generating colored segmentation video")
+        self._generate_video(
+            segmentation_data,
+            metadata,
+            output_path.with_name(f"{output_path.stem}_colored.mp4"),
+            colored_only=True,
+            fps=fps / frame_step,
+        )
 
-        if self.config.save_overlay:
-            self.logger.info("Generating overlay video")
-            self._generate_video(
-                segmentation_data,
-                metadata,
-                output_path.with_name(f"{output_path.stem}_overlay.mp4"),
-                colored_only=False,
-                fps=fps / frame_step,
-            )
+    def generate_overlay_video(
+        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
+    ) -> None:
+        """
+        Generate overlay video from segmentation data.
+
+        Args:
+            segmentation_data (np.ndarray): Array of segmentation maps.
+            metadata (Dict[str, Any]): Metadata dictionary.
+        """
+        output_path = self.config.get_output_path()
+        fps = metadata["fps"]
+        frame_step = metadata["frame_step"]
+
+        self.logger.info("Generating overlay video")
+        self._generate_video(
+            segmentation_data,
+            metadata,
+            output_path.with_name(f"{output_path.stem}_overlay.mp4"),
+            colored_only=False,
+            fps=fps / frame_step,
+        )
 
     def _generate_video(
         self,
