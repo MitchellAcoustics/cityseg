@@ -12,7 +12,8 @@ model:
 
 # Processing configuration
 frame_step: 45  # Process every 5th frame
-batch_size: 5  # Number of frames to process in each batch
+batch_size: 10  # Number of frames to process in each batch within the processor
+pipe_batch: 2 # Number of frames to process in parallel within the pipeline
 output_fps: null  # Optional: FPS for output video (if different from input)
 
 # Output options
@@ -26,4 +27,4 @@ visualization:
   colormap: "default"  # Colormap for segmentation visualization
 
 # Advanced options
-force_reprocess: false  # Set to true to reprocess even if output files exist
+force_reprocess: true  # Set to true to reprocess even if output files exist
