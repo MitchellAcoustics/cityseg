@@ -294,7 +294,7 @@ class SegmentationProcessor:
             outputs_status = {
                 "hdf": False,
                 "colored_video": False,
-                "overlay_video": False
+                "overlay_video": False,
             }
 
             if self.processing_plan["process_video"]:
@@ -307,39 +307,51 @@ class SegmentationProcessor:
                     self.save_hdf_file(hdf_path, segmentation_data, metadata)
                     outputs_status["hdf"] = True
 
-            else:
+            elif (
+                self.processing_plan["generate_hdf"]
+                or self.processing_plan["generate_colored_video"]
+                or self.processing_plan["generate_overlay_video"]
+            ):
                 self.logger.info(
-                    f"Loading existing segmentation data from HDF file: {hdf_path}"
+                    f"Loading existing segmentation data from HDF file: {hdf_path.name}"
                 )
                 segmentation_data, metadata = self.load_hdf_file(hdf_path)
                 outputs_status["hdf"] = True
 
-            if self.processing_plan["generate_colored_video"]:
-                self.logger.debug("Generating colored segmentation video")
-                self.generate_colored_video(segmentation_data, metadata)
+                if self.processing_plan["generate_colored_video"]:
+                    self.logger.debug("Generating colored segmentation video")
+                    self.generate_colored_video(segmentation_data, metadata)
+                    outputs_status["colored_video"] = True
+                elif self.config.save_colored_segmentation:
+                    self.logger.debug(
+                        "Colored segmentation video already exists and is up-to-date"
+                    )
+                    outputs_status["colored_video"] = True
+
+                if self.processing_plan["generate_overlay_video"]:
+                    self.logger.debug("Generating overlay video")
+                    self.generate_overlay_video(segmentation_data, metadata)
+                    outputs_status["overlay_video"] = True
+
+                elif self.config.save_overlay:
+                    self.logger.debug("Overlay video already exists and is up-to-date")
+                    outputs_status["overlay_video"] = True
+
+                self.logger.debug("Analyzing segmentation results")
+                self.analyze_results(segmentation_data, metadata)
+
+            else:
+                outputs_status["hdf"] = True
                 outputs_status["colored_video"] = True
-            elif self.config.save_colored_segmentation:
-                self.logger.debug("Colored segmentation video already exists and is up-to-date")
-                outputs_status["colored_video"] = True
-
-            if self.processing_plan["generate_overlay_video"]:
-                self.logger.debug("Generating overlay video")
-                self.generate_overlay_video(segmentation_data, metadata)
                 outputs_status["overlay_video"] = True
-
-            elif self.config.save_overlay:
-                self.logger.debug("Overlay video already exists and is up-to-date")
-                outputs_status["overlay_video"] = True
-
-            self.logger.debug("Analyzing segmentation results")
-            self.analyze_results(segmentation_data, metadata)
+                self.logger.info("No processing required. All outputs are up-to-date")
 
             # Update processing history
             config_hash = ConfigHasher.calculate_hash(self.config)
             self.processing_history.add_run(
                 timestamp=datetime.now().isoformat(),
                 config_hash=config_hash,
-                outputs_generated=outputs_status
+                outputs_generated=outputs_status,
             )
             self.processing_history.save(self._get_history_file_path())
 
