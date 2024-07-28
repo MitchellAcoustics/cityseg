@@ -124,6 +124,7 @@ class SegmentationProcessor:
         self.pipeline = create_segmentation_pipeline(
             model_name=config.model.name,
             device=config.model.device,
+            batch_size=config.batch_size,
         )
         self.logger = logger.bind(
             processor_type=self.__class__.__name__,
@@ -132,7 +133,7 @@ class SegmentationProcessor:
         self.processing_history = self._load_processing_history()
         self.processing_plan = self._create_processing_plan()
         self.logger.debug(
-            f"SegmentationProcessor initialized for input video.",
+            "SegmentationProcessor initialized for input video.",
             video_input=str(self.config.input),
         )
 

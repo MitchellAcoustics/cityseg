@@ -141,7 +141,7 @@ class SegmentationPipeline(ImageSegmentationPipeline):
 
 
 def create_segmentation_pipeline(
-    model_name: str, device: Optional[str] = None, **kwargs: Any
+    model_name: str, device: Optional[str] = None, batch_size=5, **kwargs: Any
 ) -> SegmentationPipeline:
     """
     Create and return a SegmentationPipeline instance based on the specified model.
@@ -150,6 +150,7 @@ def create_segmentation_pipeline(
     model name, and creates a SegmentationPipeline instance with these components.
 
     Args:
+        batch_size:
         model_name (str): The name or path of the pre-trained model to use.
         device (Optional[str]): The device to use for processing (e.g., "cpu", "cuda"). If None, it will be automatically determined.
         **kwargs: Additional keyword arguments to pass to the SegmentationPipeline constructor.
@@ -175,6 +176,7 @@ def create_segmentation_pipeline(
         model=model,
         image_processor=image_processor,
         device=device,
+        batch_size=batch_size,
         subtask="semantic",
         **kwargs,
     )
