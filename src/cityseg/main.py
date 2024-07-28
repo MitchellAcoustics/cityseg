@@ -50,13 +50,12 @@ def main() -> None:
     try:
         logger.info(f"Loading configuration from {args.config}")
         config = Config.from_yaml(Path(args.config))
-        logger.debug(f"Loaded configuration: {config}")
+        logger.info(f"Loaded configuration: {config}")
 
         logger.info(f"Creating processor for input type: {config.input_type}")
         processor = create_processor(config)
         logger.debug(f"Processor created: {type(processor).__name__}")
 
-        logger.info("Starting processing")
         processor.process()
         logger.info("Processing completed successfully")
 

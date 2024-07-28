@@ -8,9 +8,9 @@ of segmentation results, generation of output visualizations, and analysis
 of segmentation statistics.
 """
 
-from datetime import datetime
 import csv
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -21,7 +21,7 @@ import pandas as pd
 from loguru import logger
 from PIL import Image
 
-from .config import Config, InputType, ConfigHasher
+from .config import Config, ConfigHasher, InputType
 from .exceptions import InputError, ProcessingError
 from .pipeline import create_segmentation_pipeline
 from .utils import (
@@ -45,7 +45,9 @@ class ProcessingHistory:
         """Initialize an empty ProcessingHistory."""
         self.runs = []
 
-    def add_run(self, timestamp: str, config_hash: str, outputs_generated: Dict[str, bool]) -> None:
+    def add_run(
+        self, timestamp: str, config_hash: str, outputs_generated: Dict[str, bool]
+    ) -> None:
         """
         Add a new processing run to the history.
 
@@ -54,12 +56,14 @@ class ProcessingHistory:
             config_hash (str): A hash of the relevant configuration used for the run.
             outputs_generated (Dict[str, bool]): A dictionary indicating which outputs were generated.
         """
-        self.runs.append({
-            "timestamp": timestamp,
-            "config_hash": config_hash,
-            "outputs_generated": outputs_generated
-        })
-        logger.info(f"Added new processing run to history. Timestamp: {timestamp}")
+        self.runs.append(
+            {
+                "timestamp": timestamp,
+                "config_hash": config_hash,
+                "outputs_generated": outputs_generated,
+            }
+        )
+        logger.debug(f"Added new processing run to history. Timestamp: {timestamp}")
 
     def save(self, file_path: Path) -> None:
         """
@@ -68,12 +72,12 @@ class ProcessingHistory:
         Args:
             file_path (Path): The path where the history file will be saved.
         """
-        with file_path.open('w') as f:
+        with file_path.open("w") as f:
             json.dump({"runs": self.runs}, f)
-        logger.info(f"Saved processing history to {file_path}")
+        logger.debug(f"Saved processing history to {file_path}")
 
     @classmethod
-    def load(cls, file_path: Path) -> 'ProcessingHistory':
+    def load(cls, file_path: Path) -> "ProcessingHistory":
         """
         Load a processing history from a JSON file.
 
@@ -85,10 +89,10 @@ class ProcessingHistory:
         """
         history = cls()
         if file_path.exists():
-            with file_path.open('r') as f:
+            with file_path.open("r") as f:
                 data = json.load(f)
                 history.runs = data["runs"]
-            logger.info(f"Loaded processing history from {file_path}")
+            logger.debug(f"Loaded processing history from {file_path}")
         else:
             logger.warning(f"No processing history file found at {file_path}")
         return history
@@ -127,7 +131,10 @@ class SegmentationProcessor:
         )
         self.processing_history = self._load_processing_history()
         self.processing_plan = self._create_processing_plan()
-        self.logger.info("SegmentationProcessor initialized")
+        self.logger.debug(
+            f"SegmentationProcessor initialized for input video.",
+            video_input=str(self.config.input),
+        )
 
     def _load_processing_history(self) -> ProcessingHistory:
         """
@@ -139,10 +146,12 @@ class SegmentationProcessor:
         history_file = self._get_history_file_path()
         try:
             history = ProcessingHistory.load(history_file)
-            self.logger.info("Processing history loaded successfully")
+            self.logger.debug("Processing history loaded successfully")
             return history
         except Exception as e:
-            self.logger.warning(f"Failed to load processing history: {str(e)}. Starting with a new history.")
+            self.logger.warning(
+                f"Failed to load processing history: {str(e)}. Starting with a new history."
+            )
             return ProcessingHistory()
 
     def _get_history_file_path(self) -> Path:
@@ -165,23 +174,24 @@ class SegmentationProcessor:
         if self.config.force_reprocess:
             self.logger.info("Force reprocessing enabled. All steps will be executed.")
             return {
-                "process_video"         : True,
-                "generate_hdf"          : True,
+                "process_video": True,
+                "generate_hdf": True,
                 "generate_colored_video": self.config.save_colored_segmentation,
-                "generate_overlay_video": self.config.save_overlay
-                }
+                "generate_overlay_video": self.config.save_overlay,
+            }
 
         existing_outputs = self._check_existing_outputs()
 
         plan = {
-            "process_video"         : not existing_outputs["hdf_file_valid"],
-            "generate_hdf"          : not existing_outputs["hdf_file_valid"],
-            "generate_colored_video": self.config.save_colored_segmentation and not existing_outputs[
-                "colored_video_valid"],
-            "generate_overlay_video": self.config.save_overlay and not existing_outputs["overlay_video_valid"]
-            }
+            "process_video": not existing_outputs["hdf_file_valid"],
+            "generate_hdf": not existing_outputs["hdf_file_valid"],
+            "generate_colored_video": self.config.save_colored_segmentation
+            and not existing_outputs["colored_video_valid"],
+            "generate_overlay_video": self.config.save_overlay
+            and not existing_outputs["overlay_video_valid"],
+        }
 
-        self.logger.info(f"Created processing plan: {plan}")
+        self.logger.debug(f"Created processing plan: {plan}")
         return plan
 
     def _check_existing_outputs(self) -> Dict[str, bool]:
@@ -199,23 +209,26 @@ class SegmentationProcessor:
         results = {
             "hdf_file_valid": False,
             "colored_video_valid": False,
-            "overlay_video_valid": False
+            "overlay_video_valid": False,
         }
 
         if hdf_path.exists():
             results["hdf_file_valid"] = self._verify_hdf_file(hdf_path)
-            self.logger.info(f"HDF file validity: {results['hdf_file_valid']}")
+            self.logger.debug(f"HDF file validity: {results['hdf_file_valid']}")
 
         if colored_video_path.exists():
             results["colored_video_valid"] = self._verify_video_file(colored_video_path)
-            self.logger.info(f"Colored video validity: {results['colored_video_valid']}")
+            self.logger.debug(
+                f"Colored video validity: {results['colored_video_valid']}"
+            )
 
         if overlay_video_path.exists():
             results["overlay_video_valid"] = self._verify_video_file(overlay_video_path)
-            self.logger.info(f"Overlay video validity: {results['overlay_video_valid']}")
+            self.logger.debug(
+                f"Overlay video validity: {results['overlay_video_valid']}"
+            )
 
         return results
-
 
     def process(self) -> None:
         """
@@ -273,26 +286,33 @@ class SegmentationProcessor:
         Raises:
             ProcessingError: If an error occurs during video processing.
         """
-        self.logger.info(f"Processing video: {self.config.input}")
+        self.logger.info(f"Processing video: {self.config.input.name}")
         try:
             output_path = self.config.get_output_path()
             hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
 
             if self.processing_plan["process_video"]:
-                self.logger.info("Executing video frame processing")
+                self.logger.debug("Executing video frame processing")
                 segmentation_data, metadata = self.process_video_frames()
                 if self.processing_plan["generate_hdf"]:
-                    self.logger.info(f"Saving segmentation data to HDF file: {hdf_path}")
+                    self.logger.debug(
+                        f"Saving segmentation data to HDF file: {hdf_path}"
+                    )
                     self.save_hdf_file(hdf_path, segmentation_data, metadata)
             else:
-                self.logger.info(f"Loading existing segmentation data from HDF file: {hdf_path}")
+                self.logger.info(
+                    f"Loading existing segmentation data from HDF file: {hdf_path}"
+                )
                 segmentation_data, metadata = self.load_hdf_file(hdf_path)
 
-            if self.processing_plan["generate_colored_video"] or self.processing_plan["generate_overlay_video"]:
-                self.logger.info("Generating output videos")
+            if (
+                self.processing_plan["generate_colored_video"]
+                or self.processing_plan["generate_overlay_video"]
+            ):
+                self.logger.debug("Generating output videos")
                 self.generate_output_videos(segmentation_data, metadata)
 
-            self.logger.info("Analyzing segmentation results")
+            self.logger.debug("Analyzing segmentation results")
             self.analyze_results(segmentation_data, metadata)
 
             # Update processing history
@@ -303,8 +323,8 @@ class SegmentationProcessor:
                 outputs_generated={
                     "hdf": self.processing_plan["generate_hdf"],
                     "colored_video": self.processing_plan["generate_colored_video"],
-                    "overlay_video": self.processing_plan["generate_overlay_video"]
-                }
+                    "overlay_video": self.processing_plan["generate_overlay_video"],
+                },
             )
             self.processing_history.save(self._get_history_file_path())
 
@@ -326,7 +346,9 @@ class SegmentationProcessor:
         try:
             with h5py.File(file_path, "r") as f:
                 if "segmentation" not in f or "metadata" not in f:
-                    self.logger.warning(f"HDF file at {file_path} is missing required datasets")
+                    self.logger.warning(
+                        f"HDF file at {file_path} is missing required datasets"
+                    )
                     return False
 
                 json_metadata = f["metadata"][()]
@@ -335,21 +357,25 @@ class SegmentationProcessor:
                 if metadata.get("frame_step") != self.config.frame_step:
                     self.logger.warning(
                         f"HDF file frame step ({metadata.get('frame_step')}) does not match current config ({self.config.frame_step})"
-                        )
+                    )
                     return False
 
                 segmentation_data = f["segmentation"]
                 if len(segmentation_data) == 0:
-                    self.logger.warning(f"HDF file at {file_path} contains no segmentation data")
+                    self.logger.warning(
+                        f"HDF file at {file_path} contains no segmentation data"
+                    )
                     return False
 
                 first_frame = segmentation_data[0]
                 last_frame = segmentation_data[-1]
                 if first_frame.shape != last_frame.shape:
-                    self.logger.warning(f"Inconsistent frame shapes in HDF file at {file_path}")
+                    self.logger.warning(
+                        f"Inconsistent frame shapes in HDF file at {file_path}"
+                    )
                     return False
 
-            self.logger.info(f"HDF file at {file_path} is valid and up-to-date")
+            self.logger.debug(f"HDF file at {file_path} is valid and up-to-date")
             return True
         except Exception as e:
             self.logger.error(f"Error verifying HDF file at {file_path}: {str(e)}")
@@ -384,17 +410,21 @@ class SegmentationProcessor:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             ret, first_frame = cap.read()
             if not ret:
-                self.logger.warning(f"Unable to read first frame from video file at {file_path}")
+                self.logger.warning(
+                    f"Unable to read first frame from video file at {file_path}"
+                )
                 return False
 
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count - 1)
             ret, last_frame = cap.read()
             if not ret:
-                self.logger.warning(f"Unable to read last frame from video file at {file_path}")
+                self.logger.warning(
+                    f"Unable to read last frame from video file at {file_path}"
+                )
                 return False
 
             cap.release()
-            self.logger.info(f"Video file at {file_path} is valid and up-to-date")
+            self.logger.debug(f"Video file at {file_path} is valid and up-to-date")
             return True
         except Exception as e:
             self.logger.error(f"Error verifying video file at {file_path}: {str(e)}")
@@ -860,7 +890,7 @@ class DirectoryProcessor:
         # Lazy import of tqdm_context
         from .utils import tqdm_context
 
-        self.logger.info(
+        self.logger.debug(
             "Starting directory processing", input_path=str(self.config.input)
         )
 
@@ -870,14 +900,14 @@ class DirectoryProcessor:
             raise InputError(f"No video files found in directory: {self.config.input}")
 
         output_dir = self.config.get_output_path()
-        self.logger.info("Output directory set", output_dir=str(output_dir))
-        self.logger.info("Video files found", count=len(video_files))
+        self.logger.info(
+            f"Output directory set: {str(output_dir)}", output_dir=str(output_dir)
+        )
 
         with tqdm_context(total=len(video_files), desc="Processing videos") as pbar:
             for video_file in video_files:
                 try:
                     self.process_single_video(video_file, output_dir)
-                    self.logger.info("Video processed", video_file=str(video_file))
                 except Exception as e:
                     self.logger.error(
                         "Error processing video",
@@ -914,8 +944,6 @@ class DirectoryProcessor:
         Raises:
             ProcessingError: If an error occurs during video processing.
         """
-        self.logger.info("Processing video", video_file=str(video_file))
-
         video_config = self.create_video_config(video_file, output_dir)
 
         try:

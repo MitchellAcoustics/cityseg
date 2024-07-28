@@ -5,10 +5,10 @@ It includes classes for input type enumeration, model configuration, visualizati
 and the main configuration class that encapsulates all settings for the segmentation process.
 """
 
-from dataclasses import asdict, dataclass, field
-from enum import Enum
 import hashlib
 import json
+from dataclasses import asdict, dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -251,6 +251,7 @@ class Config:
             "input_type": self.input_type.value,
             "force_reprocess": self.force_reprocess,
         }
+
 
 class ConfigHasher:
     """
