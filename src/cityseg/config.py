@@ -7,6 +7,8 @@ and the main configuration class that encapsulates all settings for the segmenta
 
 from dataclasses import asdict, dataclass, field
 from enum import Enum
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -249,3 +251,54 @@ class Config:
             "input_type": self.input_type.value,
             "force_reprocess": self.force_reprocess,
         }
+
+class ConfigHasher:
+    """
+    A utility class for generating hashes of relevant configuration settings.
+    """
+
+    @staticmethod
+    def get_relevant_config(config: Config) -> Dict[str, Any]:
+        """
+        Extract the relevant configuration settings for hashing.
+
+        This method filters out configuration settings that don't affect the
+        analysis results or output format, focusing only on settings that would
+        require reprocessing if changed.
+
+        Args:
+            config (Config): The full configuration object.
+
+        Returns:
+            Dict[str, Any]: A dictionary of relevant configuration settings.
+        """
+        return {
+            "model": {
+                "name": config.model.name,
+                "model_type": config.model.model_type,
+                "max_size": config.model.max_size,
+            },
+            "frame_step": config.frame_step,
+            "save_raw_segmentation": config.save_raw_segmentation,
+            "save_colored_segmentation": config.save_colored_segmentation,
+            "save_overlay": config.save_overlay,
+            "visualization": config.visualization.alpha,  # Assuming this is the relevant part
+        }
+
+    @staticmethod
+    def calculate_hash(config: Config) -> str:
+        """
+        Calculate a hash of the relevant configuration settings.
+
+        This method creates a deterministic hash of the configuration settings
+        that affect the analysis results or output format.
+
+        Args:
+            config (Config): The full configuration object.
+
+        Returns:
+            str: A hexadecimal string representing the hash of the relevant config.
+        """
+        relevant_config = ConfigHasher.get_relevant_config(config)
+        config_str = json.dumps(relevant_config, sort_keys=True)
+        return hashlib.md5(config_str.encode()).hexdigest()

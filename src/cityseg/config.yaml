@@ -11,8 +11,8 @@ model:
   device: "mps"  # Options: "cuda", "cpu", "mps", or null for auto-detection
 
 # Processing configuration
-frame_step: 10  # Process every 5th frame
-batch_size: 15  # Number of frames to process in each batch
+frame_step: 50  # Process every 5th frame
+batch_size: 5  # Number of frames to process in each batch
 output_fps: null  # Optional: FPS for output video (if different from input)
 
 # Output options
