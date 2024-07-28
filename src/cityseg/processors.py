@@ -94,7 +94,7 @@ class ProcessingHistory:
                 history.runs = data["runs"]
             logger.debug(f"Loaded processing history from {file_path}")
         else:
-            logger.warning(f"No processing history file found at {file_path}")
+            logger.info(f"No processing history file found at {file_path}")
         return history
 
 
