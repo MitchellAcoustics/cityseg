@@ -41,7 +41,6 @@ class ModelConfig:
     )
     max_size: Optional[int] = None
     device: Optional[str] = None
-    pipe_batch: Optional[int] = 1
 
     # TODO: impelement model_type auto-detection
     # TODO: implement device auto-detection
