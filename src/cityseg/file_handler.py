@@ -68,7 +68,7 @@ class FileHandler:
         hdf_file = h5py.File(file_path, "r")
         json_metadata = hdf_file["metadata"][()]
         metadata = json.loads(json_metadata)
-        if "palette" in metadata:
+        if "palette" in metadata and isinstance(metadata["palette"], list):
             metadata["palette"] = np.array(metadata["palette"], np.uint8)
         return hdf_file, metadata
 

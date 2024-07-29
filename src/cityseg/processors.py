@@ -272,9 +272,9 @@ class VideoProcessor:
             for batch in self._frame_generator(
                 cv2.VideoCapture(str(self.config.input))
             ):
-                logger.debug("Loading batch into pipeline...")
+                # logger.debug("Loading batch into pipeline...")
                 batch_results = self.pipeline(batch)
-                logger.debug("Adding batch results to segmentation data...")
+                # logger.debug("Adding batch results to segmentation data...")
                 segmentation_data.extend(
                     [result["seg_map"] for result in batch_results]
                 )

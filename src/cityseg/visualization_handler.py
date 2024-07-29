@@ -86,11 +86,17 @@ class VisualizationHandler:
         Returns:
             np.ndarray: Color palette array for visualization, with shape (num_colors, 3).
         """
-        logger.debug(f"Generating palette for {num_colors} colors")
-        return np.array(
-            [
-                [(i * 100) % 255, (i * 150) % 255, (i * 200) % 255]
-                for i in range(num_colors)
-            ],
-            dtype=np.uint8,
-        )
+        from .palettes import ADE20K_PALETTE
+
+        if num_colors < len(ADE20K_PALETTE):
+            logger.debug(f"Using ADE20K palette with {num_colors} colors")
+            return np.array(ADE20K_PALETTE[:num_colors], dtype=np.uint8)
+        else:
+            logger.debug(f"Generating custom palette for {num_colors} colors")
+            return np.array(
+                [
+                    [(i * 100) % 255, (i * 150) % 255, (i * 200) % 255]
+                    for i in range(num_colors)
+                ],
+                dtype=np.uint8,
+            )
