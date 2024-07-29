@@ -27,6 +27,7 @@ from .exceptions import ConfigurationError, InputError, ModelError, ProcessingEr
 from .pipeline import SegmentationPipeline, create_segmentation_pipeline
 from .processors import DirectoryProcessor, SegmentationProcessor, create_processor
 from .utils import analyze_segmentation_map, setup_logging
+from . import palettes
 
 __all__ = [
     "Config",
@@ -41,4 +42,5 @@ __all__ = [
     "ProcessingError",
     "analyze_segmentation_map",
     "setup_logging",
+    "palettes"
 ]

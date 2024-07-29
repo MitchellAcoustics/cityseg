@@ -44,15 +44,19 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             Optional[np.ndarray]: The color palette as a numpy array, or None if not available.
         """
         if hasattr(self.model.config, "palette"):
-            return np.array(self.model.config.palette)
+            return np.array(self.model.config.palette, dtype=np.uint8)
         elif "ade" in self.model.config._name_or_path:
             from .palettes import ADE20K_PALETTE
 
-            return np.array(ADE20K_PALETTE)
+            return np.array(ADE20K_PALETTE, dtype=np.uint8)
         elif "mapillary-vistas" in self.model.config._name_or_path:
             from .palettes import MAPILLARY_VISTAS_PALETTE
 
-            return np.array(MAPILLARY_VISTAS_PALETTE)
+            return np.array(MAPILLARY_VISTAS_PALETTE, dtype=np.uint8)
+        elif "cityscapes" in self.model.config._name_or_path:
+            from .palettes import CITYSCAPES_PALETTE
+
+            return np.array(CITYSCAPES_PALETTE, dtype=np.uint8)
         else:
             return None
 

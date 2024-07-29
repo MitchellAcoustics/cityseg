@@ -10,6 +10,7 @@ of segmentation statistics.
 
 import csv
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
@@ -125,7 +126,7 @@ class SegmentationProcessor:
             model_name=config.model.name,
             device=config.model.device,
         )
-        self.color_palette = self._generate_palette(256)  # Pre-compute palette for up to 256 classes
+        self.palette = self.pipeline.palette if self.pipeline.palette is not None else self._generate_palette(255)  # Pre-compute palette for up to 256 classes
         self.logger = logger.bind(
             processor_type=self.__class__.__name__,
             input_type=self.config.input_type.value,
@@ -580,6 +581,8 @@ class SegmentationProcessor:
             segmentation_data = f["segmentation"][:]
             json_metadata = f["metadata"][()]
             metadata = json.loads(json_metadata)
+            if "palette" in metadata:
+                metadata["palette"] = np.array(metadata["palette"], np.uint8)
         return segmentation_data, metadata
 
     def generate_videos(
@@ -609,6 +612,7 @@ class SegmentationProcessor:
             colored_only (bool): If True, generate colored segmentation; if False, generate overlay.
             fps (float): Frames per second for the output video.
         """
+        start_time = time.time()
         cap = cv2.VideoCapture(str(self.config.input))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -648,6 +652,7 @@ class SegmentationProcessor:
             writer.release()
         cap.release()
 
+        self.logger.debug(f"Video generation took {time.time() - start_time:.4f} seconds")
         self.logger.debug(f"Videos saved to: {output_base}")
 
     def _update_processing_history(self, segmentation_data: np.ndarray, metadata: Dict[str, Any]) -> None:
@@ -765,14 +770,16 @@ class SegmentationProcessor:
         if palette is None:
             palette = self._generate_palette(len(np.unique(seg_map)))
 
+        start_time = time.time()
         if isinstance(image, Image.Image):
             image_array = np.array(image)
         else:
             image_array = image
 
-        color_seg = np.zeros((seg_map.shape[0], seg_map.shape[1], 3), dtype=np.uint8)
-        for label_id, color in enumerate(palette):
-            color_seg[seg_map == label_id] = color
+        # Vectorized color application
+        color_seg = palette[seg_map]
+
+        self.logger.debug(f"Coloring segmentation took {time.time() - start_time:.4f} seconds")
 
         if colored_only:
             return color_seg
