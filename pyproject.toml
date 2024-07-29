@@ -1,6 +1,6 @@
 [project]
 name = "cityseg"
-version = "0.2.10"
+version = "0.2.11"
 description = "A flexible and efficient semantic segmentation pipeline for processing images and videos"
 authors = [
     { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" }

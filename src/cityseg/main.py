@@ -6,7 +6,6 @@ orchestrates the overall execution of the segmentation process.
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 from loguru import logger

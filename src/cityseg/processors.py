@@ -26,7 +26,6 @@ from .config import Config, ConfigHasher, InputType
 from .exceptions import InputError, ProcessingError
 from .pipeline import create_segmentation_pipeline
 from .utils import (
-    analyze_segmentation_map,
     get_video_files,
 )
 
@@ -138,7 +137,7 @@ class SegmentationProcessor:
         self.processing_history = self._load_processing_history()
         self.processing_plan = self._create_processing_plan()
         self.logger.debug(
-            f"SegmentationProcessor initialized for input video.",
+            "SegmentationProcessor initialized for input video.",
             video_input=str(self.config.input),
         )
 
@@ -184,6 +183,7 @@ class SegmentationProcessor:
                 "generate_hdf": True,
                 "generate_colored_video": self.config.save_colored_segmentation,
                 "generate_overlay_video": self.config.save_overlay,
+                "analyze_results": self.config.analyze_results,
             }
 
         existing_outputs = self._check_existing_outputs()
@@ -195,6 +195,8 @@ class SegmentationProcessor:
             and not existing_outputs["colored_video_valid"],
             "generate_overlay_video": self.config.save_overlay
             and not existing_outputs["overlay_video_valid"],
+            "analyze_results": self.config.analyze_results
+            and not existing_outputs["analysis_files_valid"],
         }
 
         self.logger.debug(f"Created processing plan: {plan}")
@@ -211,11 +213,16 @@ class SegmentationProcessor:
         hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
         colored_video_path = output_path.with_name(f"{output_path.stem}_colored.mp4")
         overlay_video_path = output_path.with_name(f"{output_path.stem}_overlay.mp4")
+        counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
+        percentages_file = output_path.with_name(
+            f"{output_path.stem}_category_percentages.csv"
+        )
 
         results = {
             "hdf_file_valid": False,
             "colored_video_valid": False,
             "overlay_video_valid": False,
+            "analysis_files_valid": False,
         }
 
         if hdf_path.exists():
@@ -234,7 +241,42 @@ class SegmentationProcessor:
                 f"Overlay video validity: {results['overlay_video_valid']}"
             )
 
+        if counts_file.exists() and percentages_file.exists():
+            results["analysis_files_valid"] = self._verify_analysis_files(
+                counts_file, percentages_file
+            )
+            self.logger.debug(
+                f"Analysis files validity: {results['analysis_files_valid']}"
+            )
+
         return results
+
+    def _verify_analysis_files(self, counts_file: Path, percentages_file: Path) -> bool:
+        """
+        Verify the integrity of analysis files.
+
+        Args:
+            counts_file (Path): Path to the category counts CSV file.
+            percentages_file (Path): Path to the category percentages CSV file.
+
+        Returns:
+            bool: True if both files are valid, False otherwise.
+        """
+        try:
+            # Perform basic checks on the files
+            if counts_file.stat().st_size == 0 or percentages_file.stat().st_size == 0:
+                self.logger.warning("One or both analysis files are empty")
+                return False
+
+            # You could add more sophisticated checks here, such as:
+            # - Verifying the number of rows matches the expected frame count
+            # - Checking that the headers are correct
+            # - Validating that the data is within expected ranges
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Error verifying analysis files: {str(e)}")
+            return False
 
     def process(self) -> None:
         """
@@ -284,13 +326,6 @@ class SegmentationProcessor:
     def process_video(self) -> None:
         """
         Process a single video file according to the current processing plan.
-
-        This method handles video processing, including frame extraction, segmentation,
-        caching of results, and generation of output visualizations based on the
-        current processing plan.
-
-        Raises:
-            ProcessingError: If an error occurs during video processing.
         """
         self.logger.info(f"Processing video: {self.config.input.name}")
         try:
@@ -309,23 +344,33 @@ class SegmentationProcessor:
                 self.logger.info(
                     f"Loading existing segmentation data from HDF file: {hdf_path.name}"
                 )
-                segmentation_data, metadata = self.load_hdf_file(hdf_path)
+                hdf_file, metadata = self.load_hdf_file(hdf_path)
+                segmentation_data = hdf_file[
+                    "segmentation"
+                ]  # This is now a h5py.Dataset
 
             # Generate videos based on the processing plan
-            self.generate_videos(segmentation_data, metadata)
+            if (
+                self.processing_plan["generate_colored_video"]
+                or self.processing_plan["generate_overlay_video"]
+            ):
+                self.generate_videos(segmentation_data, metadata)
 
             # Analyze results if needed
-            if self.config.analyze_results:
+            if self.processing_plan["analyze_results"]:
                 self.logger.debug("Analyzing segmentation results")
                 self.analyze_results(segmentation_data, metadata)
 
             # Update processing history
-            self._update_processing_history(segmentation_data, metadata)
+            self._update_processing_history()
 
             self.logger.info("Video processing complete")
         except Exception as e:
             self.logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
+        finally:
+            if hasattr(self, "hdf_file"):
+                self.hdf_file.close()
 
     def _verify_hdf_file(self, file_path: Path) -> bool:
         """
@@ -391,15 +436,7 @@ class SegmentationProcessor:
                 self.logger.warning(f"Unable to open video file at {file_path}")
                 return False
 
-            fps = cap.get(cv2.CAP_PROP_FPS)
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-            # expected_frame_count = (self.config.frame_step + self.config.frame_step - 1) // self.config.frame_step
-            # if abs(frame_count - expected_frame_count) > 1:
-            #     self.logger.warning(
-            #         f"Video file at {file_path} has unexpected frame count. Expected: {expected_frame_count}, Actual: {frame_count}"
-            #         )
-            #     return False
 
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             ret, first_frame = cap.read()
@@ -578,55 +615,52 @@ class SegmentationProcessor:
             json_metadata = json.dumps(metadata)
             f.create_dataset("metadata", data=json_metadata)
 
-    def load_hdf_file(self, file_path: Path) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def load_hdf_file(self, file_path: Path) -> Tuple[h5py.File, Dict[str, Any]]:
         """
-        Load segmentation data and metadata from an HDF5 file.
+        Load and return the HDF5 file handle and metadata.
 
         Args:
             file_path (Path): Path to the HDF5 file.
 
         Returns:
-            Tuple[np.ndarray, Dict[str, Any]]: A tuple containing the segmentation data
+            Tuple[h5py.File, Dict[str, Any]]: A tuple containing the HDF5 file handle
             and metadata.
         """
-        with h5py.File(file_path, "r") as f:
-            segmentation_data = f["segmentation"][:]
-            json_metadata = f["metadata"][()]
-            metadata = json.loads(json_metadata)
-            if "palette" in metadata:
-                metadata["palette"] = np.array(metadata["palette"], np.uint8)
-        return segmentation_data, metadata
+        self.hdf_file = h5py.File(file_path, "r")
+        json_metadata = self.hdf_file["metadata"][()]
+        metadata = json.loads(json_metadata)
+        if "palette" in metadata:
+            metadata["palette"] = np.array(metadata["palette"], np.uint8)
+        return self.hdf_file, metadata
+
+    def get_segmentation_data_batch(self, start: int, end: int) -> np.ndarray:
+        """
+        Get a batch of segmentation data from the HDF5 file.
+
+        Args:
+            start (int): Start index of the batch.
+            end (int): End index of the batch.
+
+        Returns:
+            np.ndarray: A batch of segmentation data.
+        """
+        return self.hdf_file["segmentation"][start:end]
 
     def generate_videos(
-        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
+        self, segmentation_data: h5py.Dataset, metadata: Dict[str, Any]
     ) -> None:
         """
-        Generate output videos based on the processing plan.
+        Generate output videos based on the processing plan, using batched processing.
         """
-        if self.processing_plan.get(
-            "generate_colored_video", False
-        ) or self.processing_plan.get("generate_overlay_video", False):
-            self._generate_videos(segmentation_data, metadata)
-        else:
+        if not (
+            self.processing_plan.get("generate_colored_video", False)
+            or self.processing_plan.get("generate_overlay_video", False)
+        ):
             self.logger.info(
                 "No video generation required according to the processing plan."
             )
+            return
 
-    def _generate_videos(
-        self,
-        segmentation_data: np.ndarray,
-        metadata: Dict[str, Any],
-    ) -> None:
-        """
-        Generate a video from segmentation data.
-
-        Args:
-            segmentation_data (np.ndarray): Array of segmentation maps.
-            metadata (Dict[str, Any]): Metadata dictionary.
-            output_path (Path): Path to save the output video.
-            colored_only (bool): If True, generate colored segmentation; if False, generate overlay.
-            fps (float): Frames per second for the output video.
-        """
         start_time = time.time()
         cap = cv2.VideoCapture(str(self.config.input))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -636,36 +670,32 @@ class SegmentationProcessor:
         output_base = self.config.get_output_path()
         video_writers = self._initialize_video_writers(width, height, fps)
 
-        frame_index = 0
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        chunk_size = 100  # Adjust this value based on your memory constraints and performance needs
+        for chunk_start in range(0, len(segmentation_data), chunk_size):
+            chunk_end = min(chunk_start + chunk_size, len(segmentation_data))
+            seg_chunk = self.get_segmentation_data_batch(chunk_start, chunk_end)
 
-            if frame_index % metadata["frame_step"] == 0:
-                seg_index = frame_index // metadata["frame_step"]
-                if seg_index >= len(segmentation_data):
-                    break
+            frames = self._get_video_frames_batch(
+                cap, chunk_start, chunk_end, metadata["frame_step"]
+            )
 
-                seg_map = segmentation_data[seg_index]
-
-                if "colored" in video_writers:
-                    colored_frame = self.visualize_segmentation(
-                        frame, seg_map, metadata["palette"], colored_only=True
-                    )
+            if self.processing_plan.get("generate_colored_video", False):
+                colored_frames = self.visualize_segmentation(
+                    frames, seg_chunk, metadata["palette"], colored_only=True
+                )
+                for colored_frame in colored_frames:
                     video_writers["colored"].write(
                         cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
                     )
 
-                if "overlay" in video_writers:
-                    overlay_frame = self.visualize_segmentation(
-                        frame, seg_map, metadata["palette"], colored_only=False
-                    )
+            if self.processing_plan.get("generate_overlay_video", False):
+                overlay_frames = self.visualize_segmentation(
+                    frames, seg_chunk, metadata["palette"], colored_only=False
+                )
+                for overlay_frame in overlay_frames:
                     video_writers["overlay"].write(
                         cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
                     )
-
-            frame_index += 1
 
         for writer in video_writers.values():
             writer.release()
@@ -676,33 +706,50 @@ class SegmentationProcessor:
         )
         self.logger.debug(f"Videos saved to: {output_base}")
 
-    def _update_processing_history(
-        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
-    ) -> None:
+    def _get_video_frames_batch(
+        self, cap: cv2.VideoCapture, start: int, end: int, frame_step: int
+    ) -> List[np.ndarray]:
+        """
+        Get a batch of video frames.
+
+        Args:
+            cap (cv2.VideoCapture): Video capture object.
+            start (int): Start index of the batch.
+            end (int): End index of the batch.
+            frame_step (int): Step between frames.
+
+        Returns:
+            List[np.ndarray]: A list of video frames.
+        """
+        frames = []
+        for frame_index in range(start * frame_step, end * frame_step, frame_step):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+        return frames
+
+    def _update_processing_history(self) -> None:
         """
         Update the processing history with the current run's information.
         """
         config_hash = ConfigHasher.calculate_hash(self.config)
-        outputs_generated = {
-            "hdf": self.processing_plan.get("generate_hdf", False),
-            "colored_video": self.processing_plan.get("generate_colored_video", False),
-            "overlay_video": self.processing_plan.get("generate_overlay_video", False),
-        }
         self.processing_history.add_run(
             timestamp=datetime.now().isoformat(),
             config_hash=config_hash,
-            outputs_generated=outputs_generated,
+            outputs_generated=self.processing_plan,
         )
         self.processing_history.save(self._get_history_file_path())
 
     def analyze_results(
-        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
+        self, segmentation_data: h5py.Dataset, metadata: Dict[str, Any]
     ) -> None:
         """
-        Analyze segmentation results and generate statistics.
+        Analyze segmentation results and generate statistics using chunked processing.
 
         Args:
-            segmentation_data (np.ndarray): Array of segmentation maps.
+            segmentation_data (h5py.Dataset): Memory-mapped segmentation data.
             metadata (Dict[str, Any]): Metadata dictionary.
         """
         output_path = self.config.get_output_path()
@@ -714,6 +761,8 @@ class SegmentationProcessor:
         id2label = metadata["label_ids"]
         headers = ["Frame"] + [id2label[i] for i in sorted(id2label.keys())]
 
+        chunk_size = 100  # Adjust based on memory constraints
+
         with open(counts_file, "w", newline="") as cf, open(
             percentages_file, "w", newline=""
         ) as pf:
@@ -722,19 +771,23 @@ class SegmentationProcessor:
             counts_writer.writerow(headers)
             percentages_writer.writerow(headers)
 
-            for frame_idx, seg_map in enumerate(segmentation_data):
-                analysis = analyze_segmentation_map(seg_map, len(id2label))
-                frame_number = frame_idx * metadata["frame_step"]
+            for chunk_start in range(0, len(segmentation_data), chunk_size):
+                chunk_end = min(chunk_start + chunk_size, len(segmentation_data))
+                seg_chunk = self.get_segmentation_data_batch(chunk_start, chunk_end)
 
-                counts_row = [frame_number] + [
-                    analysis[i][0] for i in sorted(analysis.keys())
-                ]
-                percentages_row = [frame_number] + [
-                    analysis[i][1] for i in sorted(analysis.keys())
-                ]
+                for frame_idx, seg_map in enumerate(seg_chunk, start=chunk_start):
+                    analysis = self.analyze_segmentation_map(seg_map, len(id2label))
+                    frame_number = frame_idx * metadata["frame_step"]
 
-                counts_writer.writerow(counts_row)
-                percentages_writer.writerow(percentages_row)
+                    counts_row = [frame_number] + [
+                        analysis[i][0] for i in sorted(analysis.keys())
+                    ]
+                    percentages_row = [frame_number] + [
+                        analysis[i][1] for i in sorted(analysis.keys())
+                    ]
+
+                    counts_writer.writerow(counts_row)
+                    percentages_writer.writerow(percentages_row)
 
         self._generate_category_stats(
             counts_file, output_path.with_name(f"{output_path.stem}_counts_stats.csv")
@@ -744,73 +797,97 @@ class SegmentationProcessor:
             output_path.with_name(f"{output_path.stem}_percentages_stats.csv"),
         )
 
+    @staticmethod
+    def analyze_segmentation_map(
+        seg_map: np.ndarray, num_categories: int
+    ) -> Dict[int, tuple[int, float]]:
+        """
+        Analyze a segmentation map to compute pixel counts and percentages for each category.
+
+        Args:
+            seg_map (np.ndarray): The segmentation map to analyze.
+            num_categories (int): The total number of categories in the segmentation.
+
+        Returns:
+            Dict[int, tuple[int, float]]: A dictionary where keys are category IDs and values
+            are tuples of (pixel count, percentage) for each category.
+        """
+        unique, counts = np.unique(seg_map, return_counts=True)
+        total_pixels = seg_map.size
+        category_analysis = {i: (0, 0.0) for i in range(num_categories)}
+
+        for category_id, pixel_count in zip(unique, counts):
+            percentage = (pixel_count / total_pixels) * 100
+            category_analysis[int(category_id)] = (int(pixel_count), float(percentage))
+
+        return category_analysis
+
     def _generate_category_stats(self, input_file: Path, output_file: Path) -> None:
         """
         Generate category statistics from input CSV file.
 
         Args:
-            input_file (Path): Path to the input CSV file.
+            input_file (Path): Path to the input CSV file (counts or percentages).
             output_file (Path): Path to save the output statistics CSV file.
         """
-        df = pd.read_csv(input_file)
-        category_columns = df.columns[1:]
+        try:
+            # Read the entire CSV file
+            df = pd.read_csv(input_file)
 
-        stats = []
-        for category in category_columns:
-            category_data = df[category]
-            stats.append(
-                {
-                    "Category": category,
-                    "Mean": category_data.mean(),
-                    "Median": category_data.median(),
-                    "Std Dev": category_data.std(),
-                    "Min": category_data.min(),
-                    "Max": category_data.max(),
-                }
-            )
+            # Exclude the 'Frame' column and calculate statistics
+            category_columns = df.columns[1:]
+            stats = df[category_columns].agg(["mean", "median", "std", "min", "max"])
 
-        pd.DataFrame(stats).to_csv(output_file, index=False)
+            # Transpose the results for a more readable output
+            stats = stats.transpose()
+
+            # Save the statistics to the output file
+            stats.to_csv(output_file)
+
+            self.logger.info(f"Category statistics saved to {output_file}")
+        except Exception as e:
+            self.logger.error(f"Error generating category stats: {str(e)}")
+            raise
 
     def visualize_segmentation(
         self,
-        image: Union[np.ndarray, Image.Image],
-        seg_map: np.ndarray,
+        images: Union[np.ndarray, List[np.ndarray]],
+        seg_maps: Union[np.ndarray, List[np.ndarray]],
         palette: Optional[np.ndarray],
         colored_only: bool = False,
-    ) -> np.ndarray:
+    ) -> Union[np.ndarray, List[np.ndarray]]:
         """
-        Visualize the segmentation map.
+        Visualize the segmentation maps for multiple images.
 
         Args:
-            image (Union[np.ndarray, Image.Image]): The original image.
-            seg_map (np.ndarray): The segmentation map.
+            images (Union[np.ndarray, List[np.ndarray]]): The original images or a single image.
+            seg_maps (Union[np.ndarray, List[np.ndarray]]): The segmentation maps or a single segmentation map.
             palette (Optional[np.ndarray]): The color palette for visualization.
-            colored_only (bool): If True, return only the colored segmentation map.
+            colored_only (bool): If True, return only the colored segmentation maps.
 
         Returns:
-            np.ndarray: The visualized segmentation map or overlay.
+            Union[np.ndarray, List[np.ndarray]]: The visualized segmentation maps or overlays.
         """
         if palette is None:
-            palette = self._generate_palette(len(np.unique(seg_map)))
+            palette = self._generate_palette(256)  # Assuming max 256 classes
 
-        start_time = time.time()
-        if isinstance(image, Image.Image):
-            image_array = np.array(image)
-        else:
-            image_array = image
+        # Convert single image/seg_map to list for uniform processing
+        if isinstance(images, np.ndarray) and images.ndim == 3:
+            images = [images]
+            seg_maps = [seg_maps]
 
-        # Vectorized color application
-        color_seg = palette[seg_map]
+        results = []
+        for image, seg_map in zip(images, seg_maps):
+            # Vectorized color application
+            color_seg = palette[seg_map]
 
-        self.logger.debug(
-            f"Coloring segmentation took {time.time() - start_time:.4f} seconds"
-        )
+            if colored_only:
+                results.append(color_seg)
+            else:
+                img = image * 0.5 + color_seg * 0.5
+                results.append(img.astype(np.uint8))
 
-        if colored_only:
-            return color_seg
-        else:
-            img = image_array * 0.5 + color_seg * 0.5
-            return img.astype(np.uint8)
+        return results[0] if len(results) == 1 else results
 
     def _frame_generator(self, cap: cv2.VideoCapture) -> Iterator[List[Image.Image]]:
         """
