@@ -13,8 +13,6 @@ from typing import Iterator, List
 
 from loguru import logger
 
-from .utils import get_video_files
-
 
 class VideoFileIterator:
     """
@@ -48,9 +46,10 @@ class VideoFileIterator:
         Returns:
             List[Path]: A list of paths to the video files found in the input directory.
         """
-        video_files = get_video_files(self.input_path)
+        video_extensions = [".mp4", ".avi", ".mov"]
+        video_files = [f for f in self.input_path.glob('*') if f.suffix.lower() in video_extensions]
         logger.info(f"Found {len(video_files)} video files in {self.input_path}")
-        return video_files
+        return list(video_files)
 
     def __iter__(self) -> Iterator[Path]:
         """

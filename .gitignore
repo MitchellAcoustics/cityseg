@@ -19,3 +19,4 @@ src/.DS_Store
 # in progress / trials
 scripts/
 
+/.vscode/settings.json

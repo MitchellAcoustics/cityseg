@@ -28,7 +28,7 @@ from .file_handler import FileHandler
 from .pipeline import create_segmentation_pipeline
 from .processing_plan import ProcessingPlan
 from .segmentation_analyzer import SegmentationAnalyzer
-from .utils import get_segmentation_data_batch, get_video_files, tqdm_context
+from .utils import get_segmentation_data_batch, tqdm_context
 from .video_file_iterator import VideoFileIterator
 from .visualization_handler import VisualizationHandler
 

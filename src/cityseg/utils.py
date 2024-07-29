@@ -36,23 +36,6 @@ def get_segmentation_data_batch(
     return segmentation_data[start:end]
 
 
-def get_video_files(directory: Path) -> List[Path]:
-    """
-    Get a list of video files in the specified directory.
-
-    Args:
-        directory (Path): The directory to search for video files.
-
-    Returns:
-        List[Path]: A list of paths to video files found in the directory.
-    """
-    video_extensions = [".mp4", ".avi", ".mov"]
-    video_files = []
-    for ext in video_extensions:
-        video_files.extend(directory.glob(f"*{ext}"))
-    return video_files
-
-
 def setup_logging(log_level: str, verbose: bool = False) -> None:
     """
     Set up logging configuration for the application.
