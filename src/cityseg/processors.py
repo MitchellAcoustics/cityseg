@@ -56,10 +56,7 @@ class ImageProcessor:
             config (Config): Configuration object for the processor.
         """
         self.config = config
-        self.pipeline = create_segmentation_pipeline(
-            model_name=config.model.name,
-            device=config.model.device,
-        )
+        self.pipeline = create_segmentation_pipeline(config.model)
         self.file_handler = FileHandler()
         self.visualizer = VisualizationHandler()
         self.analyzer = SegmentationAnalyzer()
@@ -190,14 +187,12 @@ class VideoProcessor:
             config (Config): Configuration object for the processor.
         """
         self.config = config
-        self.pipeline = create_segmentation_pipeline(
-            model_name=config.model.name,
-            device=config.model.device,
-        )
+        self.pipeline = create_segmentation_pipeline(config.model)
         self.processing_plan = ProcessingPlan(config)
         self.file_handler = FileHandler()
         self.visualizer = VisualizationHandler()
         self.analyzer = SegmentationAnalyzer()
+        logger.debug(f"VideoProcessor initialized with config: {config}")
 
     def process(self) -> None:
         """
@@ -270,12 +265,16 @@ class VideoProcessor:
 
         logger.debug(f"Processing video frames in batches of {self.config.batch_size}")
         with tqdm_context(
-            total=total_frames // self.config.frame_step, desc="Processing frames"
+            total=total_frames // self.config.frame_step,
+            desc="Processing frames",
+            disable=self.config.disable_tqdm,
         ) as pbar:
             for batch in self._frame_generator(
                 cv2.VideoCapture(str(self.config.input))
             ):
+                logger.debug("Loading batch into pipeline...")
                 batch_results = self.pipeline(batch)
+                logger.debug("Adding batch results to segmentation data...")
                 segmentation_data.extend(
                     [result["seg_map"] for result in batch_results]
                 )
@@ -477,6 +476,7 @@ class VideoProcessor:
         with tqdm_context(
             total=metadata["frame_count"],
             desc=f"Generating {'colored' if colored_only else 'overlay'} video",
+            disable=self.config.disable_tqdm,
         ) as pbar:
             while True:
                 ret, frame = cap.read()
@@ -558,6 +558,7 @@ class SegmentationProcessor:
         self.config = config
         self.image_processor = ImageProcessor(config)
         self.video_processor = VideoProcessor(config)
+        logger.debug(f"SegmentationProcessor initialized with config: {config}")
 
     def process(self):
         """
@@ -627,7 +628,9 @@ class DirectoryProcessor:
         )
 
         with tqdm_context(
-            total=len(self.video_iterator.video_files), desc="Processing videos"
+            total=len(self.video_iterator.video_files),
+            desc="Processing videos",
+            disable=self.config.disable_tqdm,
         ) as pbar:
             for video_file in self.video_iterator:
                 if video_file.name in self.config.ignore_files:
@@ -664,7 +667,9 @@ class DirectoryProcessor:
         Raises:
             ProcessingError: If an error occurs during video processing.
         """
+        logger.debug("Creating video config...", video_file=str(video_file))
         video_config = self._create_video_config(video_file, output_dir)
+        logger.debug("Video config created", video_config=video_config)
 
         try:
             processor = SegmentationProcessor(video_config)

@@ -16,7 +16,7 @@ import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
-from tqdm.asyncio import tqdm
+from tqdm.auto import tqdm
 
 
 def get_segmentation_data_batch(

@@ -3,8 +3,7 @@ Semantic Segmentation Pipeline
 
 This package provides a flexible and efficient semantic segmentation pipeline
 for processing images and videos. It supports multiple segmentation models
-and datasets, with capabilities for tiling large images, mixed-precision
-processing, and comprehensive result analysis.
+and datasets.
 
 Main components:
 - Config: Configuration class for the pipeline

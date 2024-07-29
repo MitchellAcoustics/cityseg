@@ -6,18 +6,29 @@ ImageSegmentationPipeline to support various segmentation models and
 create detailed segmentation maps with associated metadata.
 """
 
+import json
+import logging
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+from loguru import logger
 from PIL.Image import Image
 from transformers import (
     AutoImageProcessor,
     AutoModelForSemanticSegmentation,
+    AutoProcessor,
+    BeitForSemanticSegmentation,
     ImageSegmentationPipeline,
     Mask2FormerForUniversalSegmentation,
+    MaskFormerForInstanceSegmentation,
+    OneFormerForUniversalSegmentation,
     OneFormerProcessor,
+    SegformerForSemanticSegmentation,
 )
+
+from .config import ModelConfig
 
 
 class SegmentationPipeline(ImageSegmentationPipeline):
@@ -86,8 +97,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             "palette": self.palette,
         }
 
+    @staticmethod
     def _is_single_image_result(
-        self, result: Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]
+        result: Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]],
     ) -> bool:
         """
         Determine if the result is for a single image or multiple images.
@@ -127,8 +139,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
         Returns:
             List[Dict[str, Any]]: A list of dictionaries containing segmentation maps and metadata.
         """
-        result = super().__call__(images, **kwargs)
-
+        # logger.debug("Pass image(s) up to HF pipeline...")
+        result = super().__call__(images, subtask="semantic", **kwargs)
+        # logger.debug("Received result from HF pipeline")
         if self._is_single_image_result(result):
             return [
                 self.create_single_segmentation_map(
@@ -144,8 +157,9 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             ]
 
 
+@logger.catch
 def create_segmentation_pipeline(
-    model_name: str, device: Optional[str] = None, **kwargs: Any
+    config: ModelConfig, **kwargs: Any
 ) -> SegmentationPipeline:
     """
     Create and return a SegmentationPipeline instance based on the specified model.
@@ -154,23 +168,63 @@ def create_segmentation_pipeline(
     model name, and creates a SegmentationPipeline instance with these components.
 
     Args:
-        model_name (str): The name or path of the pre-trained model to use.
-        device (Optional[str]): The device to use for processing (e.g., "cpu", "cuda"). If None, it will be automatically determined.
+        config:
         **kwargs: Additional keyword arguments to pass to the SegmentationPipeline constructor.
 
     Returns:
         SegmentationPipeline: An instance of the SegmentationPipeline class.
     """
+    model_name = config.name
+    model_type = config.model_type
+    device = config.device
+    dataset = config.dataset
+
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = (
+            "cuda"
+            if torch.cuda.is_available()
+            else "mps"
+            if torch.backends.mps.is_available()
+            else "cpu"
+        )
 
     # Initialize the appropriate model and image processor based on the model name
-    if "oneformer" in model_name.lower():
-        model = AutoModelForSemanticSegmentation.from_pretrained(model_name)
-        image_processor = OneFormerProcessor.from_pretrained(model_name)
-    elif "mask2former" in model_name.lower():
+    if "oneformer" == model_type:
+        warnings.warn(
+            "OneFormer models are experimental and may not be fully supported"
+        )
+        try:
+            model = OneFormerForUniversalSegmentation.from_pretrained(model_name)
+            image_processor = AutoProcessor.from_pretrained(model_name)
+        except ValueError as e:
+            logger.error(f"Error loading model: {e}")
+
+    elif "mask2former" == model_type:
         model = Mask2FormerForUniversalSegmentation.from_pretrained(model_name)
         image_processor = AutoImageProcessor.from_pretrained(model_name)
+
+    elif "maskformer" == model_type:
+        model = MaskFormerForInstanceSegmentation.from_pretrained(model_name)
+        image_processor = AutoImageProcessor.from_pretrained(model_name)
+
+    elif "beit" == model_type:
+        if device != "cpu":
+            logger.warning(
+                "Beit models are not supported on GPU and will be loaded on CPU"
+            )
+        device = "cpu"
+        model = BeitForSemanticSegmentation.from_pretrained(model_name)
+        image_processor = AutoImageProcessor.from_pretrained(model_name)
+
+    elif "segformer" == model_type:
+        model = SegformerForSemanticSegmentation.from_pretrained(model_name)
+        image_processor = AutoImageProcessor.from_pretrained(model_name)
+
+        if dataset == "sidewalk-semantic":
+            logging.debug("Loading Sidewalk Semantic dataset label mappings...")
+            with open("SemanticSidewalk_id2label.json") as f:
+                id2label = json.load(f)
+            model.config.id2label = id2label
     else:
         model = AutoModelForSemanticSegmentation.from_pretrained(model_name)
         image_processor = AutoImageProcessor.from_pretrained(model_name)

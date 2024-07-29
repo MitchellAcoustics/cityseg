@@ -49,7 +49,7 @@ class FileHandler:
         """
         with h5py.File(file_path, "w") as f:
             f.create_dataset("segmentation", data=segmentation_data, compression="gzip")
-            if "palette" in metadata:
+            if "palette" in metadata and isinstance(metadata["palette"], np.ndarray):
                 metadata["palette"] = metadata["palette"].tolist()
             json_metadata = json.dumps(metadata)
             f.create_dataset("metadata", data=json_metadata)
@@ -178,7 +178,7 @@ class FileHandler:
         """
         try:
             if counts_file.stat().st_size == 0 or percentages_file.stat().st_size == 0:
-                logger.warning("One or both analysis files are empty")
+                logger.info("One or both analysis files are empty")
                 return False
             return True
         except Exception as e:

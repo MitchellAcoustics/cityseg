@@ -86,12 +86,28 @@ visualization:
 
 ## Models
 
-CitySeg currently supports OneFormer models. The verified models include:
+CitySeg currently supports Mask2Former and BEIT models. The verified models include:
 
-- `shi-labs/oneformer_ade20k_swin_large`
-- `shi-labs/oneformer_cityscapes_swin_large`
-- `shi-labs/oneformer_ade20k_dinat_large`
-- `shi-labs/oneformer_cityscapes_dinat_large`
+- "facebook/mask2former-swin-large-cityscapes-semantic"
+- "facebook/mask2former-swin-large-mapillary-vistas-semantic"
+- "facebook/maskformer-swin-small-ade" (sort of, this often leads to segfaults. Recommend using `disable_tqdm` in the config.)
+- "microsoft/beit-large-finetuned-ade-640-640"
+- "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
+- "zoheb/mit-b5-finetuned-sidewalk-semantic"
+- ""nickmuchi/segformer-b4-finetuned-segments-sidewalk""
+
+Mask2Former are by far the most stable.
+
+Some models which seem to load correctly but continually produce segfault errors on my machine are:
+
+- "facebook/maskformer-swin-large-ade"
+- "nvidia/segformer-b5-finetuned-ade-640-640"
+- "nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+- "zoheb/mit-b5-finetuned-sidewalk-semantic" (use `model_type: segformer` in the config)
+
+Confirmed not to work due to issues with the Hugging Face pipeline:
+
+- "shi-labs/oneformer_ade20k_dinat_large"
 
 **Note on `dinat` models:** The `dinat` backbone models require the `natten` package, which may have installation issues on some systems. These models are also significantly slower than the `swin` backbone models, especially when forced to run on CPU. However, they may produce better quality outputs in some cases.
 
@@ -118,7 +134,7 @@ This modular structure allows for easy maintenance and extension of the CitySeg 
 The pipeline uses the `loguru` library for flexible and configurable logging. You can set the log level and enable verbose output using command-line arguments:
 
 ```
-python main.py --config path/to/your/config.yaml --log-level INFO --verbose
+python main.py --config path/to/your/config.yaml --log-level INFO # or DEBUG, WARNING, ERROR, CRITICAL or --verbose
 ```
 
 Logs are output to both the console and a file (`segmentation.log`). The file log is in JSON format for easy parsing and analysis.

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import yaml
+from loguru import logger
 
 
 class InputType(Enum):
@@ -36,14 +37,38 @@ class ModelConfig:
     """
 
     name: str
-    model_type: Optional[str] = (
-        None  # Can be 'oneformer', 'mask2former', or None for auto-detection
-    )
+    model_type: Optional[str] = None
     max_size: Optional[int] = None
     device: Optional[str] = None
+    dataset: Optional[str] = None
 
-    # TODO: impelement model_type auto-detection
-    # TODO: implement device auto-detection
+    def __post_init__(self):
+        """
+        Post-initialization method to set up the model type if not provided.
+        """
+        self.auto_detect_model_type()
+
+    def auto_detect_model_type(self):
+        """
+        Automatically detect the model type from the model name if not provided.
+        """
+
+        def auto_model_type(model_name: str) -> str:
+            return model_name.split("/")[-1].split("-")[0]
+
+        if self.model_type is None:
+            try:
+                self.model_type = auto_model_type(self.name)
+            except IndexError:
+                logger.warning(
+                    "Unable to auto-detect model type from the model name and none provided."
+                )
+                return
+            logger.info(f"Auto-detected model type: {self.model_type}")
+        elif self.model_type != auto_model_type(self.name):
+            logger.warning(
+                f"Model type does not match auto-detected model type. Using provided model type: {self.model_type}"
+            )
 
 
 @dataclass
@@ -83,6 +108,7 @@ class Config:
         visualization (VisualizationConfig): The visualization configuration.
         input_type (InputType): The type of input (automatically determined).
         force_reprocess (bool): Whether to force reprocessing of existing results.
+        disable_tqdm (bool): Whether to disable the progress bar display.
     """
 
     input: Union[Path, str]
@@ -100,6 +126,7 @@ class Config:
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     input_type: InputType = field(init=False)
     force_reprocess: bool = False
+    disable_tqdm: bool = False
 
     def __post_init__(self):
         """
@@ -232,6 +259,7 @@ class Config:
             analyze_results=config_dict.get("analyze_results", True),
             visualization=vis_config,
             force_reprocess=config_dict.get("force_reprocess", False),
+            disable_tqdm=config_dict.get("disable_tqdm", False),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -257,6 +285,7 @@ class Config:
             "visualization": asdict(self.visualization),
             "input_type": self.input_type.value,
             "force_reprocess": self.force_reprocess,
+            "disable_tqdm": self.disable_tqdm,
         }
 
 
