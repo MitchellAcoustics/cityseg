@@ -94,7 +94,7 @@ CitySeg currently supports Mask2Former and BEIT models. The verified models incl
 - "microsoft/beit-large-finetuned-ade-640-640"
 - "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
 - "zoheb/mit-b5-finetuned-sidewalk-semantic"
-- ""nickmuchi/segformer-b4-finetuned-segments-sidewalk""
+- "nickmuchi/segformer-b4-finetuned-segments-sidewalk"
 
 Mask2Former are by far the most stable.
 

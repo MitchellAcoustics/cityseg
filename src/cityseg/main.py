@@ -6,6 +6,7 @@ orchestrates the overall execution of the segmentation process.
 """
 
 import argparse
+import os
 from pathlib import Path
 
 from loguru import logger
@@ -75,6 +76,8 @@ if __name__ == "__main__":
     import warnings
 
     warnings.filterwarnings("ignore")
+    import os
+
     # import sys
     # sys.argv = ["", "config.yaml", "--verbose"]
     main()

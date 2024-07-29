@@ -7,8 +7,8 @@ ignore_files: null  # Optional: list of file names to ignore
 # Model configuration
 model:
   # name: "facebook/mask2former-swin-large-mapillary-vistas-semantic"
-  name: "nickmuchi/segformer-b4-finetuned-segments-sidewalk"
-  model_type: "segformer"  # Optional: can be 'beit', 'mask2former', or null for auto-detection
+  name: "facebook/mask2former-swin-large-ade-semantic"
+  model_type: null  # Optional: can be 'beit', 'mask2former', or null for auto-detection
   max_size: null  # Optional: maximum size for input images/frames
   device: "mps"  # Options: "cuda", "cpu", "mps", or null for auto-detection
   dataset: "semantic-sidewalk"  # Optional: dataset name for model-specific postprocessing

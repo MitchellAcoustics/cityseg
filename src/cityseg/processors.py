@@ -703,6 +703,7 @@ class DirectoryProcessor:
             save_overlay=self.config.save_overlay,
             visualization=self.config.visualization,
             force_reprocess=self.config.force_reprocess,
+            disable_tqdm=self.config.disable_tqdm,
         )
 
 
