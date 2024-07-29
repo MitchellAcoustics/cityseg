@@ -47,7 +47,9 @@ class VideoFileIterator:
             List[Path]: A list of paths to the video files found in the input directory.
         """
         video_extensions = [".mp4", ".avi", ".mov"]
-        video_files = [f for f in self.input_path.glob('*') if f.suffix.lower() in video_extensions]
+        video_files = [
+            f for f in self.input_path.glob("*") if f.suffix.lower() in video_extensions
+        ]
         logger.info(f"Found {len(video_files)} video files in {self.input_path}")
         return list(video_files)
 

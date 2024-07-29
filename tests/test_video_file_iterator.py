@@ -18,7 +18,9 @@ def mock_directory():
     return Path("/mock/directory")
 
 
-def test_video_file_iterator_initializes_with_video_files(mock_video_files, mock_directory):
+def test_video_file_iterator_initializes_with_video_files(
+    mock_video_files, mock_directory
+):
     with patch.object(Path, "glob", return_value=mock_video_files):
         iterator = VideoFileIterator(mock_directory)
         assert iterator.video_files == mock_video_files
