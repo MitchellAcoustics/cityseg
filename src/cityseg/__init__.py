@@ -20,27 +20,36 @@ visualization, and logging.
 For detailed usage instructions, please refer to the package documentation.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.12"
 
 from . import palettes
 from .config import Config
 from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
+from .file_handler import FileHandler
 from .pipeline import SegmentationPipeline, create_segmentation_pipeline
+from .processing_plan import ProcessingPlan
 from .processors import DirectoryProcessor, SegmentationProcessor, create_processor
-from .utils import analyze_segmentation_map, setup_logging
+from .segmentation_analyzer import SegmentationAnalyzer
+from .utils import setup_logging
+from .video_file_iterator import VideoFileIterator
+from .visualization_handler import VisualizationHandler
 
 __all__ = [
     "Config",
     "SegmentationPipeline",
     "create_segmentation_pipeline",
     "SegmentationProcessor",
+    "SegmentationAnalyzer",
     "DirectoryProcessor",
     "create_processor",
     "ConfigurationError",
     "InputError",
     "ModelError",
     "ProcessingError",
-    "analyze_segmentation_map",
     "setup_logging",
     "palettes",
+    "FileHandler",
+    "VisualizationHandler",
+    "ProcessingPlan",
+    "VideoFileIterator",
 ]
