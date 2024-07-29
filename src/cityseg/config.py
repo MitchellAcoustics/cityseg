@@ -41,12 +41,19 @@ class ModelConfig:
     max_size: Optional[int] = None
     device: Optional[str] = None
     dataset: Optional[str] = None
+    num_workers: Optional[int] = 8
+    pipe_batch: Optional[int] = 1
 
     def __post_init__(self):
         """
         Post-initialization method to set up the model type if not provided.
         """
         self.auto_detect_model_type()
+        if self.device == "mps" and self.num_workers > 0 or self.num_workers is None:
+            logger.warning(
+                "MPS is not compatible with multiple workers in pytorch. Setting num_workers to 0."
+            )
+            self.num_workers = 0
 
     def auto_detect_model_type(self):
         """

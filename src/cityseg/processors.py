@@ -263,7 +263,7 @@ class VideoProcessor:
 
         segmentation_data = []
 
-        logger.debug(f"Processing video frames in batches of {self.config.batch_size}")
+        logger.info(f"Processing video frames in batches of {self.config.batch_size}")
         with tqdm_context(
             total=total_frames // self.config.frame_step,
             desc="Processing frames",

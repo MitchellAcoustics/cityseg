@@ -234,5 +234,6 @@ def create_segmentation_pipeline(
         image_processor=image_processor,
         device=device,
         subtask="semantic",
+        num_workers=config.num_workers,
         **kwargs,
     )
