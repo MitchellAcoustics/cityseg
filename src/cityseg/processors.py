@@ -126,7 +126,11 @@ class SegmentationProcessor:
             model_name=config.model.name,
             device=config.model.device,
         )
-        self.palette = self.pipeline.palette if self.pipeline.palette is not None else self._generate_palette(255)  # Pre-compute palette for up to 256 classes
+        self.palette = (
+            self.pipeline.palette
+            if self.pipeline.palette is not None
+            else self._generate_palette(255)
+        )  # Pre-compute palette for up to 256 classes
         self.logger = logger.bind(
             processor_type=self.__class__.__name__,
             input_type=self.config.input_type.value,
@@ -297,10 +301,14 @@ class SegmentationProcessor:
                 self.logger.debug("Executing video frame processing")
                 segmentation_data, metadata = self.process_video_frames()
                 if self.processing_plan["generate_hdf"]:
-                    self.logger.debug(f"Saving segmentation data to HDF file: {hdf_path}")
+                    self.logger.debug(
+                        f"Saving segmentation data to HDF file: {hdf_path}"
+                    )
                     self.save_hdf_file(hdf_path, segmentation_data, metadata)
             else:
-                self.logger.info(f"Loading existing segmentation data from HDF file: {hdf_path.name}")
+                self.logger.info(
+                    f"Loading existing segmentation data from HDF file: {hdf_path.name}"
+                )
                 segmentation_data, metadata = self.load_hdf_file(hdf_path)
 
             # Generate videos based on the processing plan
@@ -498,11 +506,15 @@ class SegmentationProcessor:
 
         if self.processing_plan.get("generate_colored_video", False):
             colored_path = output_base.with_name(f"{output_base.stem}_colored.mp4")
-            writers["colored"] = cv2.VideoWriter(str(colored_path), fourcc, fps, (width, height))
+            writers["colored"] = cv2.VideoWriter(
+                str(colored_path), fourcc, fps, (width, height)
+            )
 
         if self.processing_plan.get("generate_overlay_video", False):
             overlay_path = output_base.with_name(f"{output_base.stem}_overlay.mp4")
-            writers["overlay"] = cv2.VideoWriter(str(overlay_path), fourcc, fps, (width, height))
+            writers["overlay"] = cv2.VideoWriter(
+                str(overlay_path), fourcc, fps, (width, height)
+            )
 
         return writers
 
@@ -591,11 +603,14 @@ class SegmentationProcessor:
         """
         Generate output videos based on the processing plan.
         """
-        if self.processing_plan.get("generate_colored_video", False) or \
-           self.processing_plan.get("generate_overlay_video", False):
+        if self.processing_plan.get(
+            "generate_colored_video", False
+        ) or self.processing_plan.get("generate_overlay_video", False):
             self._generate_videos(segmentation_data, metadata)
         else:
-            self.logger.info("No video generation required according to the processing plan.")
+            self.logger.info(
+                "No video generation required according to the processing plan."
+            )
 
     def _generate_videos(
         self,
@@ -636,15 +651,19 @@ class SegmentationProcessor:
 
                 if "colored" in video_writers:
                     colored_frame = self.visualize_segmentation(
-                            frame, seg_map, metadata["palette"], colored_only=True
-                            )
-                    video_writers["colored"].write(cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR))
+                        frame, seg_map, metadata["palette"], colored_only=True
+                    )
+                    video_writers["colored"].write(
+                        cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
+                    )
 
                 if "overlay" in video_writers:
                     overlay_frame = self.visualize_segmentation(
-                            frame, seg_map, metadata["palette"], colored_only=False
-                            )
-                    video_writers["overlay"].write(cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR))
+                        frame, seg_map, metadata["palette"], colored_only=False
+                    )
+                    video_writers["overlay"].write(
+                        cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
+                    )
 
             frame_index += 1
 
@@ -652,10 +671,14 @@ class SegmentationProcessor:
             writer.release()
         cap.release()
 
-        self.logger.debug(f"Video generation took {time.time() - start_time:.4f} seconds")
+        self.logger.debug(
+            f"Video generation took {time.time() - start_time:.4f} seconds"
+        )
         self.logger.debug(f"Videos saved to: {output_base}")
 
-    def _update_processing_history(self, segmentation_data: np.ndarray, metadata: Dict[str, Any]) -> None:
+    def _update_processing_history(
+        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
+    ) -> None:
         """
         Update the processing history with the current run's information.
         """
@@ -668,7 +691,7 @@ class SegmentationProcessor:
         self.processing_history.add_run(
             timestamp=datetime.now().isoformat(),
             config_hash=config_hash,
-            outputs_generated=outputs_generated
+            outputs_generated=outputs_generated,
         )
         self.processing_history.save(self._get_history_file_path())
 
@@ -779,14 +802,15 @@ class SegmentationProcessor:
         # Vectorized color application
         color_seg = palette[seg_map]
 
-        self.logger.debug(f"Coloring segmentation took {time.time() - start_time:.4f} seconds")
+        self.logger.debug(
+            f"Coloring segmentation took {time.time() - start_time:.4f} seconds"
+        )
 
         if colored_only:
             return color_seg
         else:
             img = image_array * 0.5 + color_seg * 0.5
             return img.astype(np.uint8)
-
 
     def _frame_generator(self, cap: cv2.VideoCapture) -> Iterator[List[Image.Image]]:
         """
@@ -825,10 +849,13 @@ class SegmentationProcessor:
             np.ndarray: The generated color palette.
         """
 
-        return np.array([
-            [(i * 100) % 255, (i * 150) % 255, (i * 200) % 255]
-            for i in range(num_colors)
-        ], dtype=np.uint8)
+        return np.array(
+            [
+                [(i * 100) % 255, (i * 150) % 255, (i * 200) % 255]
+                for i in range(num_colors)
+            ],
+            dtype=np.uint8,
+        )
 
 
 class DirectoryProcessor:

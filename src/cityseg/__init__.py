@@ -22,12 +22,12 @@ For detailed usage instructions, please refer to the package documentation.
 
 __version__ = "0.2.0"
 
+from . import palettes
 from .config import Config
 from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
 from .pipeline import SegmentationPipeline, create_segmentation_pipeline
 from .processors import DirectoryProcessor, SegmentationProcessor, create_processor
 from .utils import analyze_segmentation_map, setup_logging
-from . import palettes
 
 __all__ = [
     "Config",
@@ -42,5 +42,5 @@ __all__ = [
     "ProcessingError",
     "analyze_segmentation_map",
     "setup_logging",
-    "palettes"
+    "palettes",
 ]
