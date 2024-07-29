@@ -125,6 +125,7 @@ class SegmentationProcessor:
             model_name=config.model.name,
             device=config.model.device,
         )
+        self.color_palette = self._generate_palette(256)  # Pre-compute palette for up to 256 classes
         self.logger = logger.bind(
             processor_type=self.__class__.__name__,
             input_type=self.config.input_type.value,
@@ -291,69 +292,26 @@ class SegmentationProcessor:
             output_path = self.config.get_output_path()
             hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
 
-            outputs_status = {
-                "hdf": False,
-                "colored_video": False,
-                "overlay_video": False,
-            }
-
             if self.processing_plan["process_video"]:
                 self.logger.debug("Executing video frame processing")
                 segmentation_data, metadata = self.process_video_frames()
                 if self.processing_plan["generate_hdf"]:
-                    self.logger.debug(
-                        f"Saving segmentation data to HDF file: {hdf_path}"
-                    )
+                    self.logger.debug(f"Saving segmentation data to HDF file: {hdf_path}")
                     self.save_hdf_file(hdf_path, segmentation_data, metadata)
-                    outputs_status["hdf"] = True
-
-            elif (
-                self.processing_plan["generate_hdf"]
-                or self.processing_plan["generate_colored_video"]
-                or self.processing_plan["generate_overlay_video"]
-            ):
-                self.logger.info(
-                    f"Loading existing segmentation data from HDF file: {hdf_path.name}"
-                )
+            else:
+                self.logger.info(f"Loading existing segmentation data from HDF file: {hdf_path.name}")
                 segmentation_data, metadata = self.load_hdf_file(hdf_path)
-                outputs_status["hdf"] = True
 
-                if self.processing_plan["generate_colored_video"]:
-                    self.logger.debug("Generating colored segmentation video")
-                    self.generate_colored_video(segmentation_data, metadata)
-                    outputs_status["colored_video"] = True
-                elif self.config.save_colored_segmentation:
-                    self.logger.debug(
-                        "Colored segmentation video already exists and is up-to-date"
-                    )
-                    outputs_status["colored_video"] = True
+            # Generate videos based on the processing plan
+            self.generate_videos(segmentation_data, metadata)
 
-                if self.processing_plan["generate_overlay_video"]:
-                    self.logger.debug("Generating overlay video")
-                    self.generate_overlay_video(segmentation_data, metadata)
-                    outputs_status["overlay_video"] = True
-
-                elif self.config.save_overlay:
-                    self.logger.debug("Overlay video already exists and is up-to-date")
-                    outputs_status["overlay_video"] = True
-
+            # Analyze results if needed
+            if self.config.analyze_results:
                 self.logger.debug("Analyzing segmentation results")
                 self.analyze_results(segmentation_data, metadata)
 
-            else:
-                outputs_status["hdf"] = True
-                outputs_status["colored_video"] = True
-                outputs_status["overlay_video"] = True
-                self.logger.info("No processing required. All outputs are up-to-date")
-
             # Update processing history
-            config_hash = ConfigHasher.calculate_hash(self.config)
-            self.processing_history.add_run(
-                timestamp=datetime.now().isoformat(),
-                config_hash=config_hash,
-                outputs_generated=outputs_status,
-            )
-            self.processing_history.save(self._get_history_file_path())
+            self._update_processing_history(segmentation_data, metadata)
 
             self.logger.info("Video processing complete")
         except Exception as e:
@@ -537,17 +495,13 @@ class SegmentationProcessor:
         output_base = self.config.get_output_path()
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
-        if self.config.save_colored_segmentation:
+        if self.processing_plan.get("generate_colored_video", False):
             colored_path = output_base.with_name(f"{output_base.stem}_colored.mp4")
-            writers["colored"] = cv2.VideoWriter(
-                str(colored_path), fourcc, fps, (width, height)
-            )
+            writers["colored"] = cv2.VideoWriter(str(colored_path), fourcc, fps, (width, height))
 
-        if self.config.save_overlay:
+        if self.processing_plan.get("generate_overlay_video", False):
             overlay_path = output_base.with_name(f"{output_base.stem}_overlay.mp4")
-            writers["overlay"] = cv2.VideoWriter(
-                str(overlay_path), fourcc, fps, (width, height)
-            )
+            writers["overlay"] = cv2.VideoWriter(str(overlay_path), fourcc, fps, (width, height))
 
         return writers
 
@@ -628,59 +582,22 @@ class SegmentationProcessor:
             metadata = json.loads(json_metadata)
         return segmentation_data, metadata
 
-    def generate_colored_video(
+    def generate_videos(
         self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
     ) -> None:
         """
-        Generate output videos from segmentation data.
-
-        Args:
-            segmentation_data (np.ndarray): Array of segmentation maps.
-            metadata (Dict[str, Any]): Metadata dictionary.
+        Generate output videos based on the processing plan.
         """
-        output_path = self.config.get_output_path()
-        fps = metadata["fps"]
-        frame_step = metadata["frame_step"]
+        if self.processing_plan.get("generate_colored_video", False) or \
+           self.processing_plan.get("generate_overlay_video", False):
+            self._generate_videos(segmentation_data, metadata)
+        else:
+            self.logger.info("No video generation required according to the processing plan.")
 
-        self.logger.info("Generating colored segmentation video")
-        self._generate_video(
-            segmentation_data,
-            metadata,
-            output_path.with_name(f"{output_path.stem}_colored.mp4"),
-            colored_only=True,
-            fps=fps / frame_step,
-        )
-
-    def generate_overlay_video(
-        self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
-    ) -> None:
-        """
-        Generate overlay video from segmentation data.
-
-        Args:
-            segmentation_data (np.ndarray): Array of segmentation maps.
-            metadata (Dict[str, Any]): Metadata dictionary.
-        """
-        output_path = self.config.get_output_path()
-        fps = metadata["fps"]
-        frame_step = metadata["frame_step"]
-
-        self.logger.info("Generating overlay video")
-        self._generate_video(
-            segmentation_data,
-            metadata,
-            output_path.with_name(f"{output_path.stem}_overlay.mp4"),
-            colored_only=False,
-            fps=fps / frame_step,
-        )
-
-    def _generate_video(
+    def _generate_videos(
         self,
         segmentation_data: np.ndarray,
         metadata: Dict[str, Any],
-        output_path: Path,
-        colored_only: bool,
-        fps: float,
     ) -> None:
         """
         Generate a video from segmentation data.
@@ -695,9 +612,10 @@ class SegmentationProcessor:
         cap = cv2.VideoCapture(str(self.config.input))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = metadata["fps"] / metadata["frame_step"]
 
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+        output_base = self.config.get_output_path()
+        video_writers = self._initialize_video_writers(width, height, fps)
 
         frame_index = 0
         while cap.isOpened():
@@ -711,22 +629,43 @@ class SegmentationProcessor:
                     break
 
                 seg_map = segmentation_data[seg_index]
-                if colored_only:
-                    output_frame = self.visualize_segmentation(
-                        frame, seg_map, metadata["palette"], colored_only=True
-                    )
-                else:
-                    output_frame = self.visualize_segmentation(
-                        frame, seg_map, metadata["palette"], colored_only=False
-                    )
 
-                out.write(cv2.cvtColor(output_frame, cv2.COLOR_RGB2BGR))
+                if "colored" in video_writers:
+                    colored_frame = self.visualize_segmentation(
+                            frame, seg_map, metadata["palette"], colored_only=True
+                            )
+                    video_writers["colored"].write(cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR))
+
+                if "overlay" in video_writers:
+                    overlay_frame = self.visualize_segmentation(
+                            frame, seg_map, metadata["palette"], colored_only=False
+                            )
+                    video_writers["overlay"].write(cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR))
 
             frame_index += 1
 
-        self.logger.debug(f"Video saved to: {output_path}")
+        for writer in video_writers.values():
+            writer.release()
         cap.release()
-        out.release()
+
+        self.logger.debug(f"Videos saved to: {output_base}")
+
+    def _update_processing_history(self, segmentation_data: np.ndarray, metadata: Dict[str, Any]) -> None:
+        """
+        Update the processing history with the current run's information.
+        """
+        config_hash = ConfigHasher.calculate_hash(self.config)
+        outputs_generated = {
+            "hdf": self.processing_plan.get("generate_hdf", False),
+            "colored_video": self.processing_plan.get("generate_colored_video", False),
+            "overlay_video": self.processing_plan.get("generate_overlay_video", False),
+        }
+        self.processing_history.add_run(
+            timestamp=datetime.now().isoformat(),
+            config_hash=config_hash,
+            outputs_generated=outputs_generated
+        )
+        self.processing_history.save(self._get_history_file_path())
 
     def analyze_results(
         self, segmentation_data: np.ndarray, metadata: Dict[str, Any]
@@ -841,6 +780,7 @@ class SegmentationProcessor:
             img = image_array * 0.5 + color_seg * 0.5
             return img.astype(np.uint8)
 
+
     def _frame_generator(self, cap: cv2.VideoCapture) -> Iterator[List[Image.Image]]:
         """
         Generate batches of frames from a video capture object.
@@ -878,13 +818,10 @@ class SegmentationProcessor:
             np.ndarray: The generated color palette.
         """
 
-        def _generate_color(i: int) -> List[int]:
-            r = int((i * 100) % 255)
-            g = int((i * 150) % 255)
-            b = int((i * 200) % 255)
-            return [r, g, b]
-
-        return np.array([_generate_color(i) for i in range(num_colors)])
+        return np.array([
+            [(i * 100) % 255, (i * 150) % 255, (i * 200) % 255]
+            for i in range(num_colors)
+        ], dtype=np.uint8)
 
 
 class DirectoryProcessor:

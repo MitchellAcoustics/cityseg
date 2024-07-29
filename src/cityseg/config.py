@@ -96,6 +96,7 @@ class Config:
     save_raw_segmentation: bool = True
     save_colored_segmentation: bool = False
     save_overlay: bool = True
+    analyze_results: bool = True
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
     input_type: InputType = field(init=False)
     force_reprocess: bool = False
@@ -228,6 +229,7 @@ class Config:
                 "save_colored_segmentation", False
             ),
             save_overlay=config_dict.get("save_overlay", True),
+            analyze_results=config_dict.get("analyze_results", True),
             visualization=vis_config,
             force_reprocess=config_dict.get("force_reprocess", False),
         )
@@ -251,6 +253,7 @@ class Config:
             "save_raw_segmentation": self.save_raw_segmentation,
             "save_colored_segmentation": self.save_colored_segmentation,
             "save_overlay": self.save_overlay,
+            "analyze_results": self.analyze_results,
             "visualization": asdict(self.visualization),
             "input_type": self.input_type.value,
             "force_reprocess": self.force_reprocess,
