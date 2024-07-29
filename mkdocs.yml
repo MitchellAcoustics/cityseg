@@ -42,6 +42,8 @@ nav:
     - Config: api/config.md
     - Pipeline: api/pipeline.md
     - Processors: api/processors.md
+    - Segments Analysis: api/segments_analysis.md
+    - Handlers: api/handlers.md
     - Utils: api/utils.md
     - Palettes: api/palettes.md
     - Exceptions: api/exceptions.md
@@ -104,6 +106,7 @@ plugins:
             merge_init_into_class: true
             ignore_init_summary: true
             show_labels: false
+            parameter_headings: true
 
             show_if_no_docstring: false
             docstring_section_style: spacy

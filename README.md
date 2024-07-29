@@ -97,15 +97,21 @@ CitySeg currently supports OneFormer models. The verified models include:
 
 ## Project Structure
 
-The project is organized into several Python modules:
+The project is organized into several Python modules, each serving a specific purpose within the CitySeg pipeline:
 
-- `main.py`: Entry point of the application
-- `config.py`: Defines configuration classes for the pipeline
-- `pipeline.py`: Implements the core segmentation pipeline
-- `processors.py`: Contains classes for processing images, videos, and directories
-- `utils.py`: Provides utility functions for analysis, file operations, and logging
-- `palettes.py`: Defines color palettes for different datasets
-- `exceptions.py`: Custom exception classes for error handling
+- `main.py`: Entry point of the application, responsible for initializing and running the segmentation pipeline.
+- `config.py`: Defines configuration classes and handles loading and validating configuration settings.
+- `pipeline.py`: Implements the core segmentation pipeline, including model loading and inference.
+- `processors.py`: Contains classes for processing images, videos, and directories, managing the segmentation workflow.
+- `segmentation_analyzer.py`: Provides functionality for analyzing segmentation results, including computing statistics and generating reports.
+- `video_file_iterator.py`: Implements an iterator for efficiently processing multiple video files in a directory.
+- `visualization_handler.py`: Handles the visualization of segmentation results using color palettes.
+- `file_handler.py`: Manages file operations related to saving and loading segmentation data and metadata.
+- `utils.py`: Provides utility functions for various tasks, including data handling and logging.
+- `palettes.py`: Defines color palettes for different datasets used in segmentation.
+- `exceptions.py`: Custom exception classes for error handling throughout the pipeline.
+
+This modular structure allows for easy maintenance and extension of the CitySeg pipeline, facilitating the addition of new features and models.
 
 ## Logging
 
@@ -136,4 +142,4 @@ CitySeg is released under the BSD 3-Clause License. See the `LICENSE` file for d
 
 ## Contact
 
-For support or inquiries, please open an issue on the GitHub repository or contact [Your Name/Email].
+For support or inquiries, please open an issue on the GitHub repository or contact Andrew Mitchell.

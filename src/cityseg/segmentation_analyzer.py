@@ -1,3 +1,13 @@
+"""
+This module provides a class for analyzing segmentation results.
+
+It includes methods to analyze segmentation maps, compute pixel counts and percentages
+for each category, and generate statistics for the analysis results.
+
+Classes:
+    SegmentationAnalyzer: A class for analyzing segmentation results.
+"""
+
 import csv
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -11,19 +21,31 @@ from cityseg.utils import get_segmentation_data_batch
 
 
 class SegmentationAnalyzer:
+    """
+    A class for analyzing segmentation results.
+
+    This class provides methods to analyze segmentation maps, compute pixel counts and
+    percentages for each category, and generate statistics for the analysis results.
+
+    Methods:
+        analyze_segmentation_map: Analyzes a segmentation map to compute pixel counts and percentages.
+        analyze_results: Analyzes segmentation data and saves counts and percentages to CSV files.
+        generate_category_stats: Generates statistics for category counts or percentages.
+    """
+
     @staticmethod
     def analyze_segmentation_map(
         seg_map: np.ndarray, num_categories: int
     ) -> Dict[int, tuple[int, float]]:
         """
-        Analyze a segmentation map to compute pixel counts and percentages for each category.
+        Analyzes a segmentation map to compute pixel counts and percentages for each category.
 
         Args:
             seg_map (np.ndarray): The segmentation map to analyze.
             num_categories (int): The total number of categories in the segmentation.
 
         Returns:
-            Dict[int, tuple[int, float]]: A dictionary where keys are category IDs and values
+            Dict[int, Tuple[int, float]]: A dictionary where keys are category IDs and values
             are tuples of (pixel count, percentage) for each category.
         """
         unique, counts = np.unique(seg_map, return_counts=True)
@@ -38,8 +60,19 @@ class SegmentationAnalyzer:
 
     @staticmethod
     def analyze_results(
-        segmentation_data: h5py.Dataset, metadata: Dict[str, any], output_path: Path
+        segmentation_data: h5py.Dataset, metadata: Dict[str, Any], output_path: Path
     ) -> None:
+        """
+        Analyzes segmentation data and saves counts and percentages to CSV files.
+
+        This method processes the segmentation data in chunks, computes the analysis for each
+        frame, and writes the results to separate CSV files for counts and percentages.
+
+        Args:
+            segmentation_data (h5py.Dataset): The segmentation data to analyze.
+            metadata (Dict[str, Any]): Metadata containing label IDs and frame step.
+            output_path (Path): The path where the output CSV files will be saved.
+        """
         counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
         percentages_file = output_path.with_name(
             f"{output_path.stem}_category_percentages.csv"
@@ -93,6 +126,16 @@ class SegmentationAnalyzer:
 
     @staticmethod
     def generate_category_stats(input_file: Path, output_file: Path) -> None:
+        """
+        Generates statistics for category counts or percentages.
+
+        This method reads the input CSV file, computes statistics (mean, median, std, min, max)
+        for each category, and saves the results to the specified output file.
+
+        Args:
+            input_file (Path): Path to the input CSV file containing category data.
+            output_file (Path): Path to save the generated statistics.
+        """
         try:
             df = pd.read_csv(input_file)
             category_columns = df.columns[1:]

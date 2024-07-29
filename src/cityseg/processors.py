@@ -34,7 +34,27 @@ from .visualization_handler import VisualizationHandler
 
 
 class ImageProcessor:
+    """
+    Processes individual images using semantic segmentation models.
+
+    This class handles the segmentation of single images, including saving results
+    and analyzing the segmentation output.
+
+    Attributes:
+        config (Config): Configuration object containing processing parameters.
+        pipeline: Segmentation pipeline for processing images.
+        file_handler (FileHandler): Handles file operations.
+        visualizer (VisualizationHandler): Handles visualization of segmentation results.
+        analyzer (SegmentationAnalyzer): Analyzes segmentation results.
+    """
+
     def __init__(self, config: Config):
+        """
+        Initializes the ImageProcessor with the given configuration.
+
+        Args:
+            config (Config): Configuration object for the processor.
+        """
         self.config = config
         self.pipeline = create_segmentation_pipeline(
             model_name=config.model.name,
@@ -45,6 +65,15 @@ class ImageProcessor:
         self.analyzer = SegmentationAnalyzer()
 
     def process(self) -> None:
+        """
+        Processes the input image according to the configuration.
+
+        This method handles the entire image processing pipeline, including
+        segmentation, result saving, and analysis.
+
+        Raises:
+            ProcessingError: If an error occurs during image processing.
+        """
         logger.info(f"Processing image: {self.config.input}")
         try:
             image = Image.open(self.config.input).convert("RGB")
@@ -64,6 +93,13 @@ class ImageProcessor:
             raise ProcessingError(f"Error during image processing: {str(e)}")
 
     def _save_results(self, image: Image.Image, result: Dict[str, Any]) -> None:
+        """
+        Saves the segmentation results based on the configuration.
+
+        Args:
+            image (Image.Image): The original input image.
+            result (Dict[str, Any]): The segmentation result dictionary.
+        """
         output_path = self.config.get_output_path()
 
         # Save raw segmentation
@@ -98,6 +134,12 @@ class ImageProcessor:
             logger.info(f"Overlay saved to {overlay_path}")
 
     def _analyze_results(self, seg_map: np.ndarray) -> None:
+        """
+        Analyzes the segmentation results and saves the analysis.
+
+        Args:
+            seg_map (np.ndarray): The segmentation map to analyze.
+        """
         output_path = self.config.get_output_path()
         num_categories = self.config.model.num_classes
 
@@ -125,7 +167,28 @@ class ImageProcessor:
 
 
 class VideoProcessor:
+    """
+    Processes video files using semantic segmentation models.
+
+    This class handles the segmentation of video frames, including saving results,
+    generating output videos, and analyzing the segmentation output.
+
+    Attributes:
+        config (Config): Configuration object containing processing parameters.
+        pipeline: Segmentation pipeline for processing video frames.
+        processing_plan (ProcessingPlan): Plan for video processing steps.
+        file_handler (FileHandler): Handles file operations.
+        visualizer (VisualizationHandler): Handles visualization of segmentation results.
+        analyzer (SegmentationAnalyzer): Analyzes segmentation results.
+    """
+
     def __init__(self, config: Config):
+        """
+        Initializes the VideoProcessor with the given configuration.
+
+        Args:
+            config (Config): Configuration object for the processor.
+        """
         self.config = config
         self.pipeline = create_segmentation_pipeline(
             model_name=config.model.name,
@@ -137,6 +200,15 @@ class VideoProcessor:
         self.analyzer = SegmentationAnalyzer()
 
     def process(self) -> None:
+        """
+        Processes the input video according to the configuration and processing plan.
+
+        This method handles the entire video processing pipeline, including
+        frame segmentation, result saving, video generation, and analysis.
+
+        Raises:
+            ProcessingError: If an error occurs during video processing.
+        """
         logger.info(f"Processing video: {self.config.input.name}")
         try:
             output_path = self.config.get_output_path()
@@ -183,6 +255,12 @@ class VideoProcessor:
                 self.hdf_file.close()
 
     def _process_video_frames(self) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Processes video frames in batches and returns segmentation data and metadata.
+
+        Returns:
+            Tuple[np.ndarray, Dict[str, Any]]: Segmentation data and metadata.
+        """
         cap = cv2.VideoCapture(str(self.config.input))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -221,7 +299,7 @@ class VideoProcessor:
 
     def _frame_generator(self, cap: cv2.VideoCapture) -> Iterator[List[Image.Image]]:
         """
-        Generate batches of frames from a video capture object.
+        Generates batches of frames from a video capture object.
 
         Args:
             cap (cv2.VideoCapture): The video capture object.
@@ -249,7 +327,11 @@ class VideoProcessor:
         self, segmentation_data: h5py.Dataset, metadata: Dict[str, Any]
     ) -> None:
         """
-        Generate output videos based on the processing plan, using batched processing.
+        Generates output videos based on the processing plan, using batched processing.
+
+        Args:
+            segmentation_data (h5py.Dataset): The segmentation data for all frames.
+            metadata (Dict[str, Any]): Metadata about the video and segmentation.
         """
         if not (
             self.processing_plan.plan.get("generate_colored_video", False)
@@ -309,7 +391,7 @@ class VideoProcessor:
         self, width: int, height: int, fps: float
     ) -> Dict[str, cv2.VideoWriter]:
         """
-        Initialize video writers for output videos.
+        Initializes video writers for output videos.
 
         Args:
             width (int): Width of the video frame.
@@ -342,7 +424,7 @@ class VideoProcessor:
         cap: cv2.VideoCapture, start: int, end: int, frame_step: int
     ) -> List[np.ndarray]:
         """
-        Get a batch of video frames.
+        Gets a batch of video frames.
 
         Args:
             cap (cv2.VideoCapture): Video capture object.
@@ -370,6 +452,16 @@ class VideoProcessor:
         output_path: Path,
         colored_only: bool,
     ) -> None:
+        """
+        Creates a video from segmentation data.
+
+        Args:
+            cap (cv2.VideoCapture): Video capture object of the original video.
+            segmentation_data (h5py.Dataset): Segmentation data for all frames.
+            metadata (Dict[str, Any]): Metadata about the video and segmentation.
+            output_path (Path): Path to save the output video.
+            colored_only (bool): If True, create colored segmentation; if False, create overlay.
+        """
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out = cv2.VideoWriter(
             str(output_path),
@@ -411,6 +503,9 @@ class VideoProcessor:
         )
 
     def _update_processing_history(self) -> None:
+        """
+        Updates the processing history JSON file with the current processing information.
+        """
         output_path = self.config.get_output_path()
         history_file = output_path.with_name(
             f"{output_path.stem}_processing_history.json"
@@ -441,12 +536,36 @@ class VideoProcessor:
 
 
 class SegmentationProcessor:
+    """
+    Handles segmentation processing for both images and videos.
+
+    This class serves as a facade for ImageProcessor and VideoProcessor,
+    delegating the processing based on the input type.
+
+    Attributes:
+        config (Config): Configuration object containing processing parameters.
+        image_processor (ImageProcessor): Processor for handling image inputs.
+        video_processor (VideoProcessor): Processor for handling video inputs.
+    """
+
     def __init__(self, config: Config):
+        """
+        Initializes the SegmentationProcessor with the given configuration.
+
+        Args:
+            config (Config): Configuration object for the processor.
+        """
         self.config = config
         self.image_processor = ImageProcessor(config)
         self.video_processor = VideoProcessor(config)
 
     def process(self):
+        """
+        Processes the input based on its type (image or video).
+
+        Raises:
+            ValueError: If the input type is not supported.
+        """
         if self.config.input_type == InputType.SINGLE_IMAGE:
             self.image_processor.process()
         elif self.config.input_type == InputType.SINGLE_VIDEO:
@@ -456,7 +575,24 @@ class SegmentationProcessor:
 
 
 class DirectoryProcessor:
+    """
+    Processes multiple video files in a directory.
+
+    This class handles the batch processing of video files found in a specified directory.
+
+    Attributes:
+        config (Config): Configuration object containing processing parameters.
+        video_iterator (VideoFileIterator): Iterator for video files in the directory.
+        logger: Logger instance for this processor.
+    """
+
     def __init__(self, config: Config):
+        """
+        Initializes the DirectoryProcessor with the given configuration.
+
+        Args:
+            config (Config): Configuration object for the processor.
+        """
         self.config = config
         self.video_iterator = VideoFileIterator(config.input)
         self.logger = logger.bind(
@@ -468,6 +604,15 @@ class DirectoryProcessor:
         )
 
     def process(self) -> None:
+        """
+        Processes all video files in the specified directory.
+
+        This method iterates through all video files, processing each one
+        according to the configuration.
+
+        Raises:
+            InputError: If no video files are found in the directory.
+        """
         self.logger.debug(
             "Starting directory processing", input_path=str(self.config.input)
         )
@@ -509,6 +654,16 @@ class DirectoryProcessor:
         )
 
     def _process_single_video(self, video_file: Path, output_dir: Path) -> None:
+        """
+        Processes a single video file.
+
+        Args:
+            video_file (Path): Path to the video file to process.
+            output_dir (Path): Directory to save the processing results.
+
+        Raises:
+            ProcessingError: If an error occurs during video processing.
+        """
         video_config = self._create_video_config(video_file, output_dir)
 
         try:
@@ -521,6 +676,16 @@ class DirectoryProcessor:
             raise ProcessingError(f"Error processing video {video_file}: {str(e)}")
 
     def _create_video_config(self, video_file: Path, output_dir: Path) -> Config:
+        """
+        Creates a configuration object for processing a single video.
+
+        Args:
+            video_file (Path): Path to the video file.
+            output_dir (Path): Directory to save the processing results.
+
+        Returns:
+            Config: Configuration object for the video processor.
+        """
         return Config(
             input=video_file,
             output_dir=output_dir,
@@ -539,6 +704,15 @@ class DirectoryProcessor:
 def create_processor(
     config: Config,
 ) -> Union[SegmentationProcessor, DirectoryProcessor]:
+    """
+    Creates and returns the appropriate processor based on the input type.
+
+    Args:
+        config (Config): Configuration object containing processing parameters.
+
+    Returns:
+        Union[SegmentationProcessor, DirectoryProcessor]: The appropriate processor instance.
+    """
     if config.input_type == InputType.DIRECTORY:
         return DirectoryProcessor(config)
     else:

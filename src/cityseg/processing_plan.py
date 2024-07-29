@@ -1,3 +1,13 @@
+"""
+This module defines a class for creating and managing the processing plan for video segmentation tasks.
+
+It determines which processing steps need to be executed based on the configuration
+and the existence of previously generated outputs.
+
+Classes:
+    ProcessingPlan: A class to create and manage the processing plan for video segmentation tasks.
+"""
+
 from typing import Dict
 
 from loguru import logger
@@ -7,11 +17,37 @@ from .file_handler import FileHandler
 
 
 class ProcessingPlan:
+    """
+    A class to create and manage the processing plan for video segmentation tasks.
+
+    This class determines which processing steps need to be executed based on the
+    configuration and the existence of previously generated outputs.
+
+    Attributes:
+        config (Config): Configuration object containing processing parameters.
+        plan (Dict[str, bool]): A dictionary indicating which processing steps to execute.
+    """
+
     def __init__(self, config: Config):
+        """
+        Initializes the ProcessingPlan with the given configuration.
+
+        Args:
+            config (Config): Configuration object for the processing plan.
+        """
         self.config = config
         self.plan = self._create_processing_plan()
 
     def _create_processing_plan(self) -> Dict[str, bool]:
+        """
+        Creates a processing plan based on the configuration and existing outputs.
+
+        This method checks if force reprocessing is enabled or if existing outputs
+        are valid to determine which processing steps should be executed.
+
+        Returns:
+            Dict[str, bool]: A dictionary indicating which processing steps to execute.
+        """
         if self.config.force_reprocess:
             logger.info("Force reprocessing enabled. All steps will be executed.")
             return {
@@ -39,6 +75,15 @@ class ProcessingPlan:
         return plan
 
     def _check_existing_outputs(self) -> Dict[str, bool]:
+        """
+        Checks the validity of existing output files.
+
+        This method verifies the existence and validity of the HDF file, colored video,
+        overlay video, and analysis files.
+
+        Returns:
+            Dict[str, bool]: A dictionary indicating the validity of existing outputs.
+        """
         output_path = self.config.get_output_path()
         hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
         colored_video_path = output_path.with_name(f"{output_path.stem}_colored.mp4")
