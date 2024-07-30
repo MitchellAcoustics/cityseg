@@ -1,13 +1,12 @@
 import csv
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+from unittest.mock import mock_open, patch
 
-import pytest
-import numpy as np
 import h5py
+import numpy as np
 import pandas as pd
-from unittest.mock import patch, mock_open
-
+import pytest
 from cityseg.segmentation_analyzer import SegmentationAnalyzer
 
 
@@ -38,9 +37,9 @@ class TestSegmentationAnalyzer:
             Dict[str, Any]: A dictionary containing sample metadata.
         """
         return {
-            "label_ids" : {0: "background", 1: "foreground", 2: "edge"},
-            "frame_step": 5
-            }
+            "label_ids": {0: "background", 1: "foreground", 2: "edge"},
+            "frame_step": 5,
+        }
 
     def test_analyze_segmentation_map(self, sample_segmentation_map):
         """
@@ -52,27 +51,38 @@ class TestSegmentationAnalyzer:
         Args:
             sample_segmentation_map (np.ndarray): The sample segmentation map fixture.
         """
-        result = SegmentationAnalyzer.analyze_segmentation_map(sample_segmentation_map, 3)
-        expected = {
-            0: (3, 100 / 3),
-            1: (3, 100 / 3),
-            2: (3, 100 / 3)
-            }
+        result = SegmentationAnalyzer.analyze_segmentation_map(
+            sample_segmentation_map, 3
+        )
+        expected = {0: (3, 100 / 3), 1: (3, 100 / 3), 2: (3, 100 / 3)}
 
         assert len(result) == len(expected), "Number of categories does not match"
         for category in expected:
             assert category in result, f"Category {category} is missing from the result"
-            assert result[category][0] == expected[category][0], f"Pixel count for category {category} does not match"
-            assert np.isclose(result[category][1], expected[category][1], rtol=1e-9
-                              ), f"Percentage for category {category} is not close enough"
+            assert (
+                result[category][0] == expected[category][0]
+            ), f"Pixel count for category {category} does not match"
+            assert np.isclose(
+                result[category][1], expected[category][1], rtol=1e-9
+            ), f"Percentage for category {category} is not close enough"
 
-    @patch('cityseg.segmentation_analyzer.get_segmentation_data_batch')
-    @patch('cityseg.segmentation_analyzer.open', new_callable=mock_open)
-    @patch('cityseg.segmentation_analyzer.csv.writer')
-    @patch('cityseg.segmentation_analyzer.logger')
-    @patch('cityseg.segmentation_analyzer.pd.read_csv')
-    @patch('cityseg.segmentation_analyzer.SegmentationAnalyzer.generate_category_stats')
-    def test_analyze_results(self, mock_generate_stats, mock_read_csv, mock_logger, mock_csv_writer, mock_open, mock_get_data, sample_metadata, tmp_path):
+    @patch("cityseg.segmentation_analyzer.get_segmentation_data_batch")
+    @patch("cityseg.segmentation_analyzer.open", new_callable=mock_open)
+    @patch("cityseg.segmentation_analyzer.csv.writer")
+    @patch("cityseg.segmentation_analyzer.logger")
+    @patch("cityseg.segmentation_analyzer.pd.read_csv")
+    @patch("cityseg.segmentation_analyzer.SegmentationAnalyzer.generate_category_stats")
+    def test_analyze_results(
+        self,
+        mock_generate_stats,
+        mock_read_csv,
+        mock_logger,
+        mock_csv_writer,
+        mock_open,
+        mock_get_data,
+        sample_metadata,
+        tmp_path,
+    ):
         """
         Test the analyze_results method.
 
@@ -94,23 +104,29 @@ class TestSegmentationAnalyzer:
         mock_get_data.return_value = np.array([[[0, 1], [1, 2]]] * 10)
 
         # Mock the DataFrame that would be read from the CSV
-        mock_df = pd.DataFrame({
-            'Frame': [0, 5],
-            'background': [50, 60],
-            'foreground': [30, 25],
-            'edge': [20, 15]
-        })
+        mock_df = pd.DataFrame(
+            {
+                "Frame": [0, 5],
+                "background": [50, 60],
+                "foreground": [30, 25],
+                "edge": [20, 15],
+            }
+        )
         mock_read_csv.return_value = mock_df
 
         output_path = tmp_path / "test_output.h5"
-        SegmentationAnalyzer.analyze_results(mock_segmentation_data, sample_metadata, output_path)
+        SegmentationAnalyzer.analyze_results(
+            mock_segmentation_data, sample_metadata, output_path
+        )
 
         assert mock_open.call_count == 2, "Should open two files for writing"
         assert mock_csv_writer.call_count == 2, "Should create two CSV writers"
-        assert mock_generate_stats.call_count == 2, "Should call generate_category_stats twice"
+        assert (
+            mock_generate_stats.call_count == 2
+        ), "Should call generate_category_stats twice"
 
-    @patch('cityseg.segmentation_analyzer.pd.read_csv')
-    @patch('cityseg.segmentation_analyzer.logger')
+    @patch("cityseg.segmentation_analyzer.pd.read_csv")
+    @patch("cityseg.segmentation_analyzer.logger")
     def test_generate_category_stats(self, mock_logger, mock_read_csv, tmp_path):
         """
         Test the generate_category_stats method.
@@ -123,13 +139,14 @@ class TestSegmentationAnalyzer:
             mock_read_csv: Mocked pandas read_csv function.
             tmp_path (Path): Pytest fixture for a temporary directory path.
         """
-        mock_df = pd.DataFrame({
-            'Frame'     : [0, 5, 10],
-            'background': [50, 60, 70],
-            'foreground': [30, 25, 20],
-            'edge'      : [20, 15, 10]
+        mock_df = pd.DataFrame(
+            {
+                "Frame": [0, 5, 10],
+                "background": [50, 60, 70],
+                "foreground": [30, 25, 20],
+                "edge": [20, 15, 10],
             }
-                )
+        )
         mock_read_csv.return_value = mock_df
 
         input_file = tmp_path / "input.csv"
