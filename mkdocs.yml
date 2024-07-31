@@ -3,7 +3,7 @@ site_description: Documentation for the CitySeg urban semantic segmentation pipe
 site_author: Andrew Mitchell
 
 repo_name: MitchellAcoustics/cityseg
-repo_url: https://github.com/MitchellAcoustics/cityseg
+repo_url: https://github.com/soundscape-labs/cityseg
 edit_uri: 'docs/'
 
 theme:
