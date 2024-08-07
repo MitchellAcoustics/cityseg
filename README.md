@@ -86,33 +86,55 @@ visualization:
 
 ## Models
 
-CitySeg currently supports OneFormer models. The verified models include:
+CitySeg currently supports Mask2Former and BEIT models. The verified models include:
 
-- `shi-labs/oneformer_ade20k_swin_large`
-- `shi-labs/oneformer_cityscapes_swin_large`
-- `shi-labs/oneformer_ade20k_dinat_large`
-- `shi-labs/oneformer_cityscapes_dinat_large`
+- "facebook/mask2former-swin-large-cityscapes-semantic"
+- "facebook/mask2former-swin-large-mapillary-vistas-semantic"
+- "facebook/maskformer-swin-small-ade" (sort of, this often leads to segfaults. Recommend using `disable_tqdm` in the config.)
+- "microsoft/beit-large-finetuned-ade-640-640"
+- "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
+- "zoheb/mit-b5-finetuned-sidewalk-semantic"
+- "nickmuchi/segformer-b4-finetuned-segments-sidewalk"
+
+Mask2Former are by far the most stable.
+
+Some models which seem to load correctly but continually produce segfault errors on my machine are:
+
+- "facebook/maskformer-swin-large-ade"
+- "nvidia/segformer-b5-finetuned-ade-640-640"
+- "nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+- "zoheb/mit-b5-finetuned-sidewalk-semantic" (use `model_type: segformer` in the config)
+
+Confirmed not to work due to issues with the Hugging Face pipeline:
+
+- "shi-labs/oneformer_ade20k_dinat_large"
 
 **Note on `dinat` models:** The `dinat` backbone models require the `natten` package, which may have installation issues on some systems. These models are also significantly slower than the `swin` backbone models, especially when forced to run on CPU. However, they may produce better quality outputs in some cases.
 
 ## Project Structure
 
-The project is organized into several Python modules:
+The project is organized into several Python modules, each serving a specific purpose within the CitySeg pipeline:
 
-- `main.py`: Entry point of the application
-- `config.py`: Defines configuration classes for the pipeline
-- `pipeline.py`: Implements the core segmentation pipeline
-- `processors.py`: Contains classes for processing images, videos, and directories
-- `utils.py`: Provides utility functions for analysis, file operations, and logging
-- `palettes.py`: Defines color palettes for different datasets
-- `exceptions.py`: Custom exception classes for error handling
+- `main.py`: Entry point of the application, responsible for initializing and running the segmentation pipeline.
+- `config.py`: Defines configuration classes and handles loading and validating configuration settings.
+- `pipeline.py`: Implements the core segmentation pipeline, including model loading and inference.
+- `processors.py`: Contains classes for processing images, videos, and directories, managing the segmentation workflow.
+- `segmentation_analyzer.py`: Provides functionality for analyzing segmentation results, including computing statistics and generating reports.
+- `video_file_iterator.py`: Implements an iterator for efficiently processing multiple video files in a directory.
+- `visualization_handler.py`: Handles the visualization of segmentation results using color palettes.
+- `file_handler.py`: Manages file operations related to saving and loading segmentation data and metadata.
+- `utils.py`: Provides utility functions for various tasks, including data handling and logging.
+- `palettes.py`: Defines color palettes for different datasets used in segmentation.
+- `exceptions.py`: Custom exception classes for error handling throughout the pipeline.
+
+This modular structure allows for easy maintenance and extension of the CitySeg pipeline, facilitating the addition of new features and models.
 
 ## Logging
 
 The pipeline uses the `loguru` library for flexible and configurable logging. You can set the log level and enable verbose output using command-line arguments:
 
 ```
-python main.py --config path/to/your/config.yaml --log-level INFO --verbose
+python main.py --config path/to/your/config.yaml --log-level INFO # or DEBUG, WARNING, ERROR, CRITICAL or --verbose
 ```
 
 Logs are output to both the console and a file (`segmentation.log`). The file log is in JSON format for easy parsing and analysis.
@@ -136,4 +158,4 @@ CitySeg is released under the BSD 3-Clause License. See the `LICENSE` file for d
 
 ## Contact
 
-For support or inquiries, please open an issue on the GitHub repository or contact [Your Name/Email].
+For support or inquiries, please open an issue on the GitHub repository or contact Andrew Mitchell.

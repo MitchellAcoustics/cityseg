@@ -6,21 +6,24 @@ ignore_files: null  # Optional: list of file names to ignore
 
 # Model configuration
 model:
-  name: "facebook/mask2former-swin-large-mapillary-vistas-semantic"
-  model_type: "mask2former"  # Optional: can be 'oneformer', 'mask2former', or null for auto-detection
+  name: "facebook/mask2former-swin-large-cityscapes-semantic"
+  model_type: null  # Optional: can be 'beit', 'mask2former', or null for auto-detection
   max_size: null  # Optional: maximum size for input images/frames
   device: "mps"  # Options: "cuda", "cpu", "mps", or null for auto-detection
+  dataset: "semantic-sidewalk"  # Optional: dataset name for model-specific postprocessing
+  num_workers: 0  # Number of workers for data loading
+  pipe_batch: 5  # Number of frames to process in each batch. Recommend setting this equal to batch_size below.
 
 # Processing configuration
-frame_step: 10  # Process every 5th frame
+frame_step: 1  # Process every 5th frame
 batch_size: 5  # Number of frames to process in each batch
 output_fps: null  # Optional: FPS for output video (if different from input)
 
 # Output options
-save_raw_segmentation: false
+save_raw_segmentation: true
 save_colored_segmentation: true
 save_overlay: true
-analyze_results: false
+analyze_results: true
 
 # Visualization configuration
 visualization:
@@ -29,3 +32,4 @@ visualization:
 
 # Advanced options
 force_reprocess: false  # Set to true to reprocess even if output files exist
+disable_tqdm: false  # Set to true to disable progress bars. In some cases, tqdm seems to lead to segfaults.

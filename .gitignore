@@ -9,6 +9,9 @@ wheels/
 # venv
 .venv
 example_inputs
+.idea
+*.log
+.vscode
 
 # IDE files
 .idea/
@@ -19,3 +22,4 @@ src/.DS_Store
 # in progress / trials
 scripts/
 
+/.vscode/settings.json
