@@ -5,8 +5,8 @@ import h5py
 import numpy as np
 import pytest
 
-from src.cityseg.config import Config
-from src.cityseg.file_handler import FileHandler
+from cityseg.config import Config
+from cityseg.file_handler import FileHandler
 
 
 @pytest.fixture

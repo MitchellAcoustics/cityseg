@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.cityseg.video_file_iterator import VideoFileIterator
+from cityseg.video_file_iterator import VideoFileIterator
 
 
 @pytest.fixture

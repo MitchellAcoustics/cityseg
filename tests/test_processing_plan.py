@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.cityseg.config import Config
-from src.cityseg.processing_plan import ProcessingPlan
+from cityseg.config import Config
+from cityseg.processing_plan import ProcessingPlan
 
 
 @pytest.fixture

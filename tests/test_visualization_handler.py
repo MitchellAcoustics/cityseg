@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.cityseg.visualization_handler import VisualizationHandler
+from cityseg.visualization_handler import VisualizationHandler
 
 
 def test_visualize_single_image_with_default_palette():
