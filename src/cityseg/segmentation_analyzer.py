@@ -10,7 +10,7 @@ Classes:
 
 import csv
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 import h5py
 import numpy as np

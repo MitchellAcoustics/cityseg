@@ -1,9 +1,6 @@
-import csv
-from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import mock_open, patch
 
-import h5py
 import numpy as np
 import pandas as pd
 import pytest

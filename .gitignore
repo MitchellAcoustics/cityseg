@@ -9,6 +9,9 @@ wheels/
 # venv
 .venv
 example_inputs
+.idea
+*.log
+.vscode
 
 # IDE files
 .idea/

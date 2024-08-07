@@ -13,12 +13,11 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Tuple, Union
 
 import cv2
 import h5py
 import numpy as np
-import pandas as pd
 from loguru import logger
 from PIL import Image
 

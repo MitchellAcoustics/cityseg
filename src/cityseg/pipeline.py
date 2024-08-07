@@ -24,7 +24,6 @@ from transformers import (
     Mask2FormerForUniversalSegmentation,
     MaskFormerForInstanceSegmentation,
     OneFormerForUniversalSegmentation,
-    OneFormerProcessor,
     SegformerForSemanticSegmentation,
 )
 
