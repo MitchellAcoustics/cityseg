@@ -1,6 +1,6 @@
 [project]
 name = "cityseg"
-version = "0.3.0"
+version = "0.3.1dev2"
 description = "A flexible and efficient semantic segmentation pipeline for processing images and videos"
 authors = [
     { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" }
@@ -23,28 +23,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "BSD-3-Clause" }
 
-[project.optional-dependencies]
-docs = [
-    "mkdocs-material>=9.5.30",
-    "mkdocs>=1.6.0",
-    "mkdocstrings[python]>=0.25.2",
-    "nbconvert>=7.16.4",
-    "black>=24.4.2",
-]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.rye]
+[tool.uv]
 managed = true
-dev-dependencies = [
-    "jupyter>=1.0.0",
-    "pytest>=8.3.2",
-    "rich[jupyter]>=13.7.1",
-    #    "natten==0.17.1",
-    "matplotlib>=3.9.1",
-]
+default-groups = ["dev", "test"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -52,3 +37,60 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/cityseg"]
 
+[dependency-groups]
+dev = [
+    "rich>=13.9.4",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.5.44",
+    "mkdocstrings[python]>=0.27.0",
+]
+test = [
+    "pytest>=8.3.3",
+    "pytest-cov>=6.0.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-v --tb=short --durations=5 --cov=src/cityseg --cov-report=term"
+testpaths = ["tests", "src/cityseg"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+console_output_style = "count"
+markers = [
+    "slow: mark test as slow",
+    "skip: mark test as skipped",
+    "skipif: mark test as skipped if condition is met",
+    "xfail: mark test as expected to fail",
+    "parametrize: mark test as parametrized"
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "*.hdf5",
+    "docs/tutorials",
+    "docs/img"
+]
+
+[tool.bumpver]
+current_version = "v0.3.1dev2"
+version_pattern = "vMAJOR.MINOR.PATCH[[-]PYTAGNUM]"
+commit_message = "bump version {old_version} -> {new_version}"
+tag_message = "{new_version}"
+commit = true
+tag = true
+push = true
+
+[tool.bumpver.file_patterns]
+"pyproject.toml" = [
+    '^current_version = "{version}"',
+    '^version = "{pep440_version}"',
+]
+"src/cityseg/__init__.py" = [
+    '^__version__ = "{pep440_version}"',
+]
+
+
+[project.scripts]
+cityseg = "cityseg.main:main"

@@ -23,3 +23,6 @@ src/.DS_Store
 scripts/
 
 /.vscode/settings.json
+
+*.hdf5
+.coverage
