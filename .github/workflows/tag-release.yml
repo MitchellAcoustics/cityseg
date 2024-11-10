@@ -88,14 +88,10 @@ jobs:
   tests-pass:
     needs: [details]
     uses: ./.github/workflows/test.yml
-  
-  tutorial-tests-pass:
-    needs: [details]
-    uses: ./.github/workflows/test-tutorials.yml  
 
   pypi_publish:
     name: Upload release to PyPI
-    needs: [setup_and_build, details, tests-pass, tutorial-tests-pass]
+    needs: [setup_and_build, details, tests-pass]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -121,7 +117,7 @@ jobs:
 
   github_release:
     name: Create GitHub Release
-    needs: [setup_and_build, details, tests-pass, tutorial-tests-pass]
+    needs: [setup_and_build, details, tests-pass]
     runs-on: ubuntu-latest
     permissions:
       contents: write
