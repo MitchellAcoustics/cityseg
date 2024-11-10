@@ -87,6 +87,9 @@ push = true
     '^current_version = "{version}"',
     '^version = "{pep440_version}"',
 ]
+"src/cityseg/__init__.py" = [
+    '^__version__ = "{pep440_version}"',
+]
 
 
 [project.scripts]
