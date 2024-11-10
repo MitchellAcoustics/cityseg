@@ -19,7 +19,7 @@ visualization, and logging.
 For detailed usage instructions, please refer to the package documentation.
 """
 
-__version__ = "0.3.1dev2"
+__version__ = "0.3.1rc0"
 
 from . import palettes
 from .config import Config
