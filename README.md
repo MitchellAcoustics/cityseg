@@ -55,7 +55,7 @@ For a complete list of dependencies, please refer to the `pyproject.toml` file.
 2. Run the pipeline using the following command:
 
    ```
-   python -m cityseg.main --config path/to/your/config.yaml
+   python -m cityseg.main path/to/your/config.yaml
    ```
 
    Optional arguments:

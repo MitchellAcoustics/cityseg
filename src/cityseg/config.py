@@ -184,9 +184,7 @@ class Config:
         if self.input_type == InputType.DIRECTORY:
             name = self.input.name
         else:
-            name = self.input.stem.split("_")[
-                0
-            ]  # Use only the first part of the filename
+            name = self.input.stem
 
         model_name = self.model.name.split("/")[-1]
         base_name = f"{name}_{model_name}_step{self.frame_step}"

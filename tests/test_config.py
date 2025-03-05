@@ -220,10 +220,10 @@ class TestGenerateOutputPrefix:
     @pytest.mark.parametrize(
         "input_name, model_name, frame_step, expected",
         [
-            ("video_input.mp4", "model", 1, "video_model_step1"),
-            ("video_input_long_name.mp4", "model", 5, "video_model_step5"),
-            ("image_input.jpg", "org/model", 1, "image_model_step1"),
-            ("image_input_long_name.png", "org/model", 5, "image_model_step5"),
+            ("video_input.mp4", "model", 1, "video_input_model_step1"),
+            ("video_input_long_name.mp4", "model", 5, "video_input_long_name_model_step5"),
+            ("image_input.jpg", "org/model", 1, "image_input_model_step1"),
+            ("image_input_long_name.png", "org/model", 5, "image_input_long_name_model_step5"),
         ],
     )
     def test_file_input(
@@ -238,7 +238,7 @@ class TestGenerateOutputPrefix:
         input_file = tmp_path / "complex_name_with_underscores.mp4"
         input_file.touch()
         config = base_config(input_file, "model", 1)
-        assert config.generate_output_prefix() == "complex_model_step1"
+        assert config.generate_output_prefix() == "complex_name_with_underscores_model_step1"
 
     def test_model_name_with_multiple_slashes(self, tmp_path, base_config):
         input_file = tmp_path / "input.mp4"
