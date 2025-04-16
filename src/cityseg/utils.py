@@ -10,27 +10,30 @@ import sys
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-import h5py
 import numpy as np
+import xarray as xr
 from loguru import logger
 from tqdm.auto import tqdm
 
 
-def get_segmentation_data_batch(
-    segmentation_data: h5py.Dataset, start: int, end: int
+def get_segmentation_batch(
+    segmentation_data: np.ndarray | xr.DataArray, start: int, end: int
 ) -> np.ndarray:
     """
-    Get a batch of segmentation data from the HDF5 file.
+    Get a batch of segmentation data from an array or xarray DataArray.
 
     Args:
-        segmentation_data:
+        segmentation_data: The segmentation data, either as numpy array or xarray DataArray.
         start (int): Start index of the batch.
         end (int): End index of the batch.
 
     Returns:
         np.ndarray: A batch of segmentation data.
     """
-    return segmentation_data[start:end]
+    if isinstance(segmentation_data, xr.DataArray):
+        return segmentation_data.isel(time=slice(start, end)).values
+    else:
+        return segmentation_data[start:end]
 
 
 def setup_logging(log_level: str, verbose: bool = False) -> None:

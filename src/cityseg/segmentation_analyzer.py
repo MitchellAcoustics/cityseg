@@ -10,14 +10,14 @@ Classes:
 
 import csv
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
-import h5py
 import numpy as np
 import pandas as pd
+import xarray as xr
 from loguru import logger
 
-from cityseg.utils import get_segmentation_data_batch
+from cityseg.utils import get_segmentation_batch
 
 
 class SegmentationAnalyzer:
@@ -29,14 +29,15 @@ class SegmentationAnalyzer:
 
     Methods:
         analyze_segmentation_map: Analyzes a segmentation map to compute pixel counts and percentages.
-        analyze_results: Analyzes segmentation data and saves counts and percentages to CSV files.
+        analyze_segmentation_dataset: Analyzes xarray Dataset with segmentation data and saves to Parquet.
+        analyze_results_legacy: Analyzes segmentation data and saves counts and percentages to CSV files.
         generate_category_stats: Generates statistics for category counts or percentages.
     """
 
     @staticmethod
     def analyze_segmentation_map(
         seg_map: np.ndarray, num_categories: int
-    ) -> Dict[int, tuple[int, float]]:
+    ) -> dict[int, tuple[int, float]]:
         """
         Analyzes a segmentation map to compute pixel counts and percentages for each category.
 
@@ -45,7 +46,7 @@ class SegmentationAnalyzer:
             num_categories (int): The total number of categories in the segmentation.
 
         Returns:
-            Dict[int, Tuple[int, float]]: A dictionary where keys are category IDs and values
+            dict[int, tuple[int, float]]: A dictionary where keys are category IDs and values
             are tuples of (pixel count, percentage) for each category.
         """
         unique, counts = np.unique(seg_map, return_counts=True)
@@ -59,18 +60,55 @@ class SegmentationAnalyzer:
         return category_analysis
 
     @staticmethod
-    def analyze_results(
-        segmentation_data: h5py.Dataset, metadata: Dict[str, Any], output_path: Path
+    def analyze_segmentation_dataset(
+        dataset: xr.Dataset, output_path: Path
+    ) -> Path:
+        """
+        Analyzes an xarray Dataset containing segmentation data and saves results to Parquet.
+        
+        This method is the modern replacement for analyze_results that works with xarray Datasets
+        directly and outputs to Parquet format.
+        
+        Args:
+            dataset (xr.Dataset): The xarray Dataset containing segmentation data.
+            output_path (Path): The base path where the output files will be saved.
+            
+        Returns:
+            Path: Path to the saved Parquet file.
+        """
+        from .storage_adapter import ParquetAnalysisStorage
+        
+        # Create a ParquetAnalysisStorage instance and use it to analyze the data
+        storage = ParquetAnalysisStorage()
+        metadata = dict(dataset.attrs)
+        
+        # Save the analysis
+        parquet_path = storage.save_video_analysis(
+            dataset.segmentation, 
+            metadata,
+            output_path.with_name(f"{output_path.stem}_analysis")
+        )
+        
+        logger.info(f"Segmentation analysis saved to {parquet_path}")
+        return parquet_path
+        
+    @staticmethod
+    def analyze_results_legacy(
+        segmentation_data: np.ndarray | xr.DataArray, 
+        metadata: dict[str, Any], 
+        output_path: Path
     ) -> None:
         """
         Analyzes segmentation data and saves counts and percentages to CSV files.
+        
+        Legacy method that outputs to CSV format instead of Parquet for backward compatibility.
 
         This method processes the segmentation data in chunks, computes the analysis for each
         frame, and writes the results to separate CSV files for counts and percentages.
 
         Args:
-            segmentation_data (h5py.Dataset): The segmentation data to analyze.
-            metadata (Dict[str, Any]): Metadata containing label IDs and frame step.
+            segmentation_data: The segmentation data as numpy array or xarray DataArray.
+            metadata (dict[str, Any]): Metadata containing label IDs and frame step.
             output_path (Path): The path where the output CSV files will be saved.
         """
         counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
@@ -78,8 +116,23 @@ class SegmentationAnalyzer:
             f"{output_path.stem}_category_percentages.csv"
         )
 
-        id2label = metadata["label_ids"]
-        headers = ["Frame"] + [id2label[i] for i in sorted(id2label.keys())]
+        id2label = metadata.get("label_ids", {})
+        if not id2label and "model" in metadata and "id2label" in metadata["model"]:
+            id2label = metadata["model"]["id2label"]
+            
+        # Ensure we have enough label information
+        if not id2label:
+            # Create default labels based on unique values in first frame
+            if isinstance(segmentation_data, xr.DataArray):
+                first_frame = segmentation_data.isel(time=0).values
+            else:
+                first_frame = segmentation_data[0]
+                
+            unique_values = np.unique(first_frame)
+            id2label = {str(val): f"category_{val}" for val in unique_values}
+            
+        headers = ["Frame"] + [id2label.get(str(i), f"category_{i}") 
+                              for i in sorted([int(k) if k.isdigit() else k for k in id2label.keys()])]
 
         chunk_size = 100  # Adjust based on memory constraints
 
@@ -91,9 +144,15 @@ class SegmentationAnalyzer:
             counts_writer.writerow(headers)
             percentages_writer.writerow(headers)
 
-            for chunk_start in range(0, len(segmentation_data), chunk_size):
-                chunk_end = min(chunk_start + chunk_size, len(segmentation_data))
-                seg_chunk = get_segmentation_data_batch(
+            # Determine total length based on input type
+            if isinstance(segmentation_data, xr.DataArray):
+                total_length = segmentation_data.sizes["time"]
+            else:
+                total_length = len(segmentation_data)
+
+            for chunk_start in range(0, total_length, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, total_length)
+                seg_chunk = get_segmentation_batch(
                     segmentation_data, chunk_start, chunk_end
                 )
 
@@ -101,13 +160,13 @@ class SegmentationAnalyzer:
                     analysis = SegmentationAnalyzer.analyze_segmentation_map(
                         seg_map, len(id2label)
                     )
-                    frame_number = frame_idx * metadata["frame_step"]
+                    frame_number = frame_idx * metadata.get("frame_step", 1)
 
                     counts_row = [frame_number] + [
-                        analysis[i][0] for i in sorted(analysis.keys())
+                        analysis.get(i, (0, 0.0))[0] for i in sorted(range(len(id2label)))
                     ]
                     percentages_row = [frame_number] + [
-                        analysis[i][1] for i in sorted(analysis.keys())
+                        analysis.get(i, (0, 0.0))[1] for i in sorted(range(len(id2label)))
                     ]
 
                     counts_writer.writerow(counts_row)

@@ -4,126 +4,191 @@ import tempfile
 from typing import Generator
 from unittest.mock import patch
 
-import h5py
 import numpy as np
 import pytest
-from cityseg.utils import get_segmentation_data_batch, setup_logging, tqdm_context
+import xarray as xr
+from cityseg.utils import get_segmentation_batch, setup_logging, tqdm_context
 from tqdm.auto import tqdm
 
 
 @pytest.fixture
-def temp_hdf5_file() -> Generator[str, None, None]:
+def temp_array_data() -> Generator[tuple[np.ndarray, xr.DataArray], None, None]:
     """
-    Fixture to create a temporary HDF5 file for testing.
+    Fixture to create temporary numpy array and xarray DataArray for testing.
 
     Yields:
-        str: Path to the temporary HDF5 file.
+        tuple[np.ndarray, xr.DataArray]: Numpy array and equivalent xarray DataArray.
     """
-    with tempfile.NamedTemporaryFile(suffix=".hdf5", delete=False) as tmp:
-        tmp_path = tmp.name
-    yield tmp_path
-    os.unlink(tmp_path)
+    # Create numpy array
+    data = np.random.rand(100, 100)
+    
+    # Create equivalent xarray DataArray
+    data_array = xr.DataArray(
+        data,
+        dims=["time", "x"],
+        coords={
+            "time": np.arange(100),
+            "x": np.arange(100)
+        }
+    )
+    
+    yield data, data_array
 
 
-class TestGetSegmentationDataBatch:
-    """Tests for the get_segmentation_data_batch function."""
+class TestGetSegmentationBatch:
+    """Tests for the get_segmentation_batch function."""
 
-    def test_retrieves_correct_batch_of_segmentation_data(
-        self, temp_hdf5_file: str
-    ) -> None:
+    def test_retrieves_correct_batch_from_numpy(self, temp_array_data) -> None:
         """
-        Test that the function retrieves the correct batch of segmentation data.
+        Test that the function retrieves the correct batch from numpy array.
 
         Args:
-            temp_hdf5_file (str): Path to temporary HDF5 file.
+            temp_array_data: Tuple of numpy array and xarray DataArray.
         """
-        data = np.random.rand(100, 100)
-        with h5py.File(temp_hdf5_file, "w") as f:
-            dset = f.create_dataset("segmentation", data=data)
-            batch = get_segmentation_data_batch(dset, 10, 20)
-            assert batch.shape == (10, 100)
-            assert np.array_equal(batch, data[10:20])
+        data, _ = temp_array_data
+        batch = get_segmentation_batch(data, 10, 20)
+        assert batch.shape == (10, 100)
+        assert np.array_equal(batch, data[10:20])
 
-    def test_handles_empty_segmentation_data_batch(self, temp_hdf5_file: str) -> None:
+    def test_retrieves_correct_batch_from_xarray(self, temp_array_data) -> None:
+        """
+        Test that the function retrieves the correct batch from xarray DataArray.
+
+        Args:
+            temp_array_data: Tuple of numpy array and xarray DataArray.
+        """
+        _, data_array = temp_array_data
+        batch = get_segmentation_batch(data_array, 10, 20)
+        assert batch.shape == (10, 100)
+        assert np.array_equal(batch, data_array.values[10:20])
+
+    def test_handles_empty_segmentation_batch(self, temp_array_data) -> None:
         """
         Test that the function correctly handles an empty batch request.
 
         Args:
-            temp_hdf5_file (str): Path to temporary HDF5 file.
+            temp_array_data: Tuple of numpy array and xarray DataArray.
         """
-        data = np.random.rand(100, 100)
-        with h5py.File(temp_hdf5_file, "w") as f:
-            dset = f.create_dataset("segmentation", data=data)
-            batch = get_segmentation_data_batch(dset, 0, 0)
-            assert batch.shape == (0, 100)
+        data, data_array = temp_array_data
+        
+        # Test with numpy array
+        numpy_batch = get_segmentation_batch(data, 0, 0)
+        assert numpy_batch.shape == (0, 100)
+        
+        # Test with xarray DataArray
+        xarray_batch = get_segmentation_batch(data_array, 0, 0)
+        assert xarray_batch.shape == (0, 100)
 
-    def test_handles_out_of_bounds_segmentation_data_batch(
-        self, temp_hdf5_file: str
-    ) -> None:
+    def test_handles_out_of_bounds_batch(self, temp_array_data) -> None:
         """
         Test that the function correctly handles out-of-bounds batch requests.
 
         Args:
-            temp_hdf5_file (str): Path to temporary HDF5 file.
+            temp_array_data: Tuple of numpy array and xarray DataArray.
         """
-        data = np.random.rand(100, 100)
-        with h5py.File(temp_hdf5_file, "w") as f:
-            dset = f.create_dataset("segmentation", data=data)
-            batch = get_segmentation_data_batch(dset, 90, 110)
-            assert batch.shape == (10, 100)
-            assert np.array_equal(batch, data[90:100])
+        data, data_array = temp_array_data
+        
+        # Test with numpy array
+        numpy_batch = get_segmentation_batch(data, 90, 110)
+        assert numpy_batch.shape == (10, 100)
+        assert np.array_equal(numpy_batch, data[90:100])
+        
+        # Test with xarray DataArray
+        xarray_batch = get_segmentation_batch(data_array, 90, 110)
+        assert xarray_batch.shape == (10, 100)
+        assert np.array_equal(xarray_batch, data_array.values[90:100])
 
-    def test_with_different_data_types(self, temp_hdf5_file: str) -> None:
+    def test_with_different_data_types(self) -> None:
         """
         Test the function with different data types (int and float).
-
-        Args:
-            temp_hdf5_file (str): Path to temporary HDF5 file.
         """
         int_data = np.random.randint(0, 100, (100, 100))
         float_data = np.random.rand(100, 100)
 
-        with h5py.File(temp_hdf5_file, "w") as f:
-            int_dset = f.create_dataset("int_segmentation", data=int_data)
-            float_dset = f.create_dataset("float_segmentation", data=float_data)
+        # Create xarray DataArrays
+        int_array = xr.DataArray(
+            int_data,
+            dims=["time", "x"],
+            coords={
+                "time": np.arange(100),
+                "x": np.arange(100)
+            }
+        )
+        
+        float_array = xr.DataArray(
+            float_data,
+            dims=["time", "x"],
+            coords={
+                "time": np.arange(100),
+                "x": np.arange(100)
+            }
+        )
 
-            int_batch = get_segmentation_data_batch(int_dset, 10, 20)
-            float_batch = get_segmentation_data_batch(float_dset, 10, 20)
+        # Test with numpy arrays
+        int_batch = get_segmentation_batch(int_data, 10, 20)
+        float_batch = get_segmentation_batch(float_data, 10, 20)
 
-            assert int_batch.dtype == np.int64
-            assert float_batch.dtype == np.float64
-            assert np.array_equal(int_batch, int_data[10:20])
-            assert np.array_equal(float_batch, float_data[10:20])
+        assert int_batch.dtype == np.int64
+        assert float_batch.dtype == np.float64
+        assert np.array_equal(int_batch, int_data[10:20])
+        assert np.array_equal(float_batch, float_data[10:20])
+        
+        # Test with xarray DataArrays
+        int_xarray_batch = get_segmentation_batch(int_array, 10, 20)
+        float_xarray_batch = get_segmentation_batch(float_array, 10, 20)
 
-    def test_with_multi_dimensional_data(self, temp_hdf5_file: str) -> None:
+        assert int_xarray_batch.dtype == np.int64
+        assert float_xarray_batch.dtype == np.float64
+        assert np.array_equal(int_xarray_batch, int_data[10:20])
+        assert np.array_equal(float_xarray_batch, float_data[10:20])
+
+    def test_with_multi_dimensional_data(self) -> None:
         """
         Test the function with multi-dimensional data.
-
-        Args:
-            temp_hdf5_file (str): Path to temporary HDF5 file.
         """
-        data = np.random.rand(
-            100, 50, 50, 3
-        )  # 4D data (frames, height, width, channels)
-        with h5py.File(temp_hdf5_file, "w") as f:
-            dset = f.create_dataset("multi_dim_segmentation", data=data)
-            batch = get_segmentation_data_batch(dset, 10, 20)
-            assert batch.shape == (10, 50, 50, 3)
-            assert np.array_equal(batch, data[10:20])
+        # 4D data (frames, height, width, channels)
+        data = np.random.rand(100, 50, 50, 3)
+        
+        # Create xarray DataArray
+        data_array = xr.DataArray(
+            data,
+            dims=["time", "y", "x", "channel"],
+            coords={
+                "time": np.arange(100),
+                "y": np.arange(50),
+                "x": np.arange(50),
+                "channel": np.arange(3)
+            }
+        )
+        
+        # Test with numpy array
+        numpy_batch = get_segmentation_batch(data, 10, 20)
+        assert numpy_batch.shape == (10, 50, 50, 3)
+        assert np.array_equal(numpy_batch, data[10:20])
+        
+        # Test with xarray DataArray
+        xarray_batch = get_segmentation_batch(data_array, 10, 20)
+        assert xarray_batch.shape == (10, 50, 50, 3)
+        assert np.array_equal(xarray_batch, data[10:20])
 
-    def test_single_element_batch(self, temp_hdf5_file: str) -> None:
+    def test_single_element_batch(self, temp_array_data) -> None:
         """
         Test the function with a single-element batch.
 
         Args:
-            temp_hdf5_file (str): Path to temporary HDF5 file.
+            temp_array_data: Tuple of numpy array and xarray DataArray.
         """
-        data = np.random.rand(100, 100)
-        with h5py.File(temp_hdf5_file, "w") as f:
-            dset = f.create_dataset("segmentation", data=data)
-            batch = get_segmentation_data_batch(dset, 10, 11)
-            assert batch.shape == (1, 100)
-            assert np.array_equal(batch, data[10:11])
+        data, data_array = temp_array_data
+        
+        # Test with numpy array
+        numpy_batch = get_segmentation_batch(data, 10, 11)
+        assert numpy_batch.shape == (1, 100)
+        assert np.array_equal(numpy_batch, data[10:11])
+        
+        # Test with xarray DataArray
+        xarray_batch = get_segmentation_batch(data_array, 10, 11)
+        assert xarray_batch.shape == (1, 100)
+        assert np.array_equal(xarray_batch, data_array.values[10:11])
 
 
 class TestTqdmContext:
@@ -297,21 +362,27 @@ class TestSetupLogging:
         )
 
 
-def test_integration_segmentation_with_tqdm(temp_hdf5_file: str) -> None:
+def test_integration_segmentation_with_tqdm(temp_array_data) -> None:
     """
-    Integration test for using get_segmentation_data_batch within a tqdm_context.
+    Integration test for using get_segmentation_batch within a tqdm_context.
 
     Args:
-        temp_hdf5_file (str): Path to temporary HDF5 file.
+        temp_array_data: Tuple of numpy array and xarray DataArray.
     """
-    data = np.random.rand(100, 100)
-    with h5py.File(temp_hdf5_file, "w") as f:
-        dset = f.create_dataset("segmentation", data=data)
+    data, data_array = temp_array_data
 
-        with tqdm_context(total=len(data), desc="Processing") as pbar:
-            for i in range(0, len(data), 10):
-                batch = get_segmentation_data_batch(dset, i, min(i + 10, len(data)))
-                assert batch.shape[0] <= 10
-                pbar.update(len(batch))
-
-        assert pbar.n == len(data)
+    # Test with numpy array
+    with tqdm_context(total=len(data), desc="Processing Numpy") as pbar:
+        for i in range(0, len(data), 10):
+            batch = get_segmentation_batch(data, i, min(i + 10, len(data)))
+            assert batch.shape[0] <= 10
+            pbar.update(len(batch))
+    assert pbar.n == len(data)
+    
+    # Test with xarray DataArray
+    with tqdm_context(total=len(data_array), desc="Processing XArray") as pbar:
+        for i in range(0, len(data_array), 10):
+            batch = get_segmentation_batch(data_array, i, min(i + 10, len(data_array)))
+            assert batch.shape[0] <= 10
+            pbar.update(len(batch))
+    assert pbar.n == len(data_array)

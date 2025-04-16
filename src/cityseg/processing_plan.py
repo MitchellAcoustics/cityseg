@@ -52,7 +52,7 @@ class ProcessingPlan:
             logger.info("Force reprocessing enabled. All steps will be executed.")
             return {
                 "process_video": True,
-                "generate_hdf": True,
+                "generate_segmentation": True,
                 "generate_colored_video": self.config.save_colored_segmentation,
                 "generate_overlay_video": self.config.save_overlay,
                 "analyze_results": self.config.analyze_results,
@@ -61,8 +61,8 @@ class ProcessingPlan:
         existing_outputs = self._check_existing_outputs()
 
         plan = {
-            "process_video": not existing_outputs["hdf_file_valid"],
-            "generate_hdf": not existing_outputs["hdf_file_valid"],
+            "process_video": not existing_outputs["segmentation_file_valid"],
+            "generate_segmentation": not existing_outputs["segmentation_file_valid"],
             "generate_colored_video": self.config.save_colored_segmentation
             and not existing_outputs["colored_video_valid"],
             "generate_overlay_video": self.config.save_overlay
@@ -78,33 +78,38 @@ class ProcessingPlan:
         """
         Checks the validity of existing output files.
 
-        This method verifies the existence and validity of the HDF file, colored video,
-        overlay video, and analysis files.
+        This method verifies the existence and validity of the Zarr segmentation file,
+        colored video, overlay video, and analysis files.
 
         Returns:
             Dict[str, bool]: A dictionary indicating the validity of existing outputs.
         """
         output_path = self.config.get_output_path()
-        hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
+        zarr_path = output_path.with_name(f"{output_path.stem}_segmentation.zarr")
         colored_video_path = output_path.with_name(f"{output_path.stem}_colored.mp4")
         overlay_video_path = output_path.with_name(f"{output_path.stem}_overlay.mp4")
+        
+        # Check both traditional CSV files and new Parquet files
         counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
         percentages_file = output_path.with_name(
             f"{output_path.stem}_category_percentages.csv"
         )
+        parquet_analysis_file = output_path.with_name(f"{output_path.stem}_analysis.parquet")
 
         results = {
-            "hdf_file_valid": False,
+            "segmentation_file_valid": False,
             "colored_video_valid": False,
             "overlay_video_valid": False,
             "analysis_files_valid": False,
         }
 
-        if hdf_path.exists():
-            results["hdf_file_valid"] = FileHandler.verify_hdf_file(
-                hdf_path, self.config
+        # First check if Zarr file exists and is valid
+        if zarr_path.exists():
+            results["segmentation_file_valid"] = FileHandler.verify_zarr_file(
+                zarr_path, self.config
             )
 
+        # Check video outputs
         if colored_video_path.exists():
             results["colored_video_valid"] = FileHandler.verify_video_file(
                 colored_video_path
@@ -115,7 +120,12 @@ class ProcessingPlan:
                 overlay_video_path
             )
 
-        if counts_file.exists() and percentages_file.exists():
+        # Check analysis files (support both old CSV format and new Parquet format)
+        if parquet_analysis_file.exists():
+            results["analysis_files_valid"] = FileHandler.verify_parquet_file(
+                parquet_analysis_file
+            )
+        elif counts_file.exists() and percentages_file.exists():
             results["analysis_files_valid"] = FileHandler.verify_analysis_files(
                 counts_file, percentages_file
             )

@@ -28,7 +28,7 @@ from .pipeline import create_segmentation_pipeline
 from .processing_plan import ProcessingPlan
 from .segmentation_analyzer import SegmentationAnalyzer
 from .storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage, StorageFactory
-from .utils import get_segmentation_data_batch, tqdm_context
+from .utils import get_segmentation_batch, tqdm_context
 from .video_file_iterator import VideoFileIterator
 from .video_resource import VideoResource
 from .visualization_handler import VisualizationHandler
@@ -294,10 +294,11 @@ class VideoProcessor:
             logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
         finally:
-            # No longer need to manually close HDF files
+            # Zarr files are automatically closed and don't need manual cleanup
             pass
 
-    # These methods are replaced by the CitysegWorkflow implementation
+    # The following methods use the new storage adapters but could eventually be migrated
+    # completely to the CitysegWorkflow implementation
 
     def generate_videos(
         self, segmentation_dataset: xr.Dataset, metadata: Dict[str, Any]
@@ -704,12 +705,13 @@ class DirectoryProcessor:
         logger.debug("Video config created", video_config=video_config)
 
         try:
-            # We can either use the SegmentationProcessor or directly the workflow
-            # Using SegmentationProcessor for compatibility with existing code
+            # Use SegmentationProcessor which internally uses our new workflow
+            # This maintains backward compatibility with existing calling code
             processor = SegmentationProcessor(video_config)
             processor.process()
             
-            # Alternative direct workflow approach:
+            # TODO: In a future version, we could directly use the workflow approach 
+            # which would be slightly more efficient but requires API changes:
             # workflow = create_workflow(video_config)
             # result = workflow.process()
             # if 'error' in result:

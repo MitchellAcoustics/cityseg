@@ -28,7 +28,7 @@ def test_force_reprocess_enabled(mock_config):
 
     expected_plan = {
         "process_video": True,
-        "generate_hdf": True,
+        "generate_segmentation": True,
         "generate_colored_video": True,
         "generate_overlay_video": True,
         "analyze_results": True,
@@ -49,7 +49,7 @@ def test_existing_outputs_invalid(mock_config):
     # Mock the _check_existing_outputs method before creating the ProcessingPlan object
     ProcessingPlan._check_existing_outputs = MagicMock(
         return_value={
-            "hdf_file_valid": False,
+            "segmentation_file_valid": False,
             "colored_video_valid": False,
             "overlay_video_valid": False,
             "analysis_files_valid": False,
@@ -60,7 +60,7 @@ def test_existing_outputs_invalid(mock_config):
 
     expected_plan = {
         "process_video": True,
-        "generate_hdf": True,
+        "generate_segmentation": True,
         "generate_colored_video": True,
         "generate_overlay_video": True,
         "analyze_results": True,
@@ -81,7 +81,7 @@ def test_existing_outputs_valid(mock_config):
     # Mock the _check_existing_outputs method before creating the ProcessingPlan object
     ProcessingPlan._check_existing_outputs = MagicMock(
         return_value={
-            "hdf_file_valid": True,
+            "segmentation_file_valid": True,
             "colored_video_valid": True,
             "overlay_video_valid": True,
             "analysis_files_valid": True,
@@ -92,7 +92,7 @@ def test_existing_outputs_valid(mock_config):
 
     expected_plan = {
         "process_video": False,
-        "generate_hdf": False,
+        "generate_segmentation": False,
         "generate_colored_video": False,
         "generate_overlay_video": False,
         "analyze_results": False,

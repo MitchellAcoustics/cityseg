@@ -5,16 +5,16 @@ It defines the functions and data flow for processing images and videos through
 the segmentation pipeline, with proper caching and resource management.
 """
 
+import csv
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import xarray as xr
 from PIL import Image
 from loguru import logger
 from hamilton import driver
-from hamilton.function_modifiers import parameterize
 
 from .config import Config, ModelConfig
 from .pipeline import create_segmentation_pipeline
@@ -23,7 +23,7 @@ from .storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage
 
 
 # Hamilton workflow functions
-def video_metadata(video_path: str) -> Dict[str, Any]:
+def video_metadata(video_path: str) -> dict[str, Any]:
     """
     Extract metadata from a video file.
     
@@ -31,18 +31,18 @@ def video_metadata(video_path: str) -> Dict[str, Any]:
         video_path (str): Path to the video file.
         
     Returns:
-        Dict[str, Any]: Dictionary containing video metadata.
+        dict[str, Any]: Dictionary containing video metadata.
     """
     video_resource = VideoResource(Path(video_path))
     return video_resource.get_metadata()
 
 
-def frame_count(video_metadata: Dict[str, Any]) -> int:
+def frame_count(video_metadata: dict[str, Any]) -> int:
     """
     Extract the frame count from video metadata.
     
     Args:
-        video_metadata (Dict[str, Any]): Video metadata dictionary.
+        video_metadata (dict[str, Any]): Video metadata dictionary.
         
     Returns:
         int: Frame count.
@@ -50,12 +50,12 @@ def frame_count(video_metadata: Dict[str, Any]) -> int:
     return video_metadata["frame_count"]
 
 
-def fps(video_metadata: Dict[str, Any]) -> float:
+def fps(video_metadata: dict[str, Any]) -> float:
     """
     Extract frames per second from video metadata.
     
     Args:
-        video_metadata (Dict[str, Any]): Video metadata dictionary.
+        video_metadata (dict[str, Any]): Video metadata dictionary.
         
     Returns:
         float: Frames per second.
@@ -63,15 +63,15 @@ def fps(video_metadata: Dict[str, Any]) -> float:
     return video_metadata["fps"]
 
 
-def video_dimensions(video_metadata: Dict[str, Any]) -> Dict[str, int]:
+def video_dimensions(video_metadata: dict[str, Any]) -> dict[str, int]:
     """
     Extract video dimensions from metadata.
     
     Args:
-        video_metadata (Dict[str, Any]): Video metadata dictionary.
+        video_metadata (dict[str, Any]): Video metadata dictionary.
         
     Returns:
-        Dict[str, int]: Dictionary with video dimensions.
+        dict[str, int]: Dictionary with video dimensions.
     """
     return {
         "width": video_metadata["width"], 
@@ -79,7 +79,7 @@ def video_dimensions(video_metadata: Dict[str, Any]) -> Dict[str, int]:
     }
 
 
-def frame_indices(frame_count: int, frame_step: int) -> List[int]:
+def frame_indices(frame_count: int, frame_step: int) -> list[int]:
     """
     Generate frame indices to process based on frame step.
     
@@ -88,34 +88,34 @@ def frame_indices(frame_count: int, frame_step: int) -> List[int]:
         frame_step (int): Number of frames to skip between captures.
         
     Returns:
-        List[int]: List of frame indices to process.
+        list[int]: List of frame indices to process.
     """
     return list(range(0, frame_count, frame_step))
 
 
-def video_frames(video_path: str, frame_indices: List[int]) -> List[Image.Image]:
+def video_frames(video_path: str, frame_indices: list[int]) -> list[Image.Image]:
     """
     Load frames from the video at specified indices.
     
     Args:
         video_path (str): Path to the video file.
-        frame_indices (List[int]): List of frame indices to load.
+        frame_indices (list[int]): List of frame indices to load.
         
     Returns:
-        List[Image.Image]: List of loaded frames as PIL images.
+        list[Image.Image]: List of loaded frames as PIL images.
     """
     video_resource = VideoResource(Path(video_path))
     return video_resource.get_frame_batch(frame_indices)
 
 
 def segmentation_pipeline(
-    model: Dict[str, Any]
+    model: dict[str, Any]
 ) -> Any:
     """
     Create a segmentation pipeline from model configuration.
     
     Args:
-        model (Dict[str, Any]): Model configuration dictionary.
+        model (dict[str, Any]): Model configuration dictionary.
         
     Returns:
         Any: Segmentation pipeline.
@@ -129,12 +129,12 @@ def segmentation_pipeline(
     return create_segmentation_pipeline(model_config)
 
 
-def segmentation_maps(video_frames: List[Image.Image], segmentation_pipeline: Any) -> List[np.ndarray]:
+def segmentation_maps(video_frames: list[Image.Image], segmentation_pipeline: Any) -> list[np.ndarray]:
     """
     Process frames through segmentation pipeline to get segmentation maps.
     
     Args:
-        video_frames (List[Image.Image]): List of frames to process.
+        video_frames (list[Image.Image]): List of frames to process.
         segmentation_pipeline: Segmentation pipeline.
         
     Returns:
@@ -159,19 +159,19 @@ def segmentation_maps(video_frames: List[Image.Image], segmentation_pipeline: An
 
 
 def segmentation_dataset(
-    segmentation_maps: List[np.ndarray],
-    video_metadata: Dict[str, Any],
-    frame_indices: List[int],
-    model: Dict[str, Any]
+    segmentation_maps: list[np.ndarray],
+    video_metadata: dict[str, Any],
+    frame_indices: list[int],
+    model: dict[str, Any]
 ) -> xr.Dataset:
     """
     Create an xarray Dataset from segmentation maps and metadata.
     
     Args:
-        segmentation_maps (List[np.ndarray]): List of segmentation maps.
-        video_metadata (Dict[str, Any]): Video metadata.
-        frame_indices (List[int]): List of frame indices.
-        model (Dict[str, Any]): Model configuration.
+        segmentation_maps (list[np.ndarray]): List of segmentation maps.
+        video_metadata (dict[str, Any]): Video metadata.
+        frame_indices (list[int]): List of frame indices.
+        model (dict[str, Any]): Model configuration.
         
     Returns:
         xr.Dataset: Dataset containing segmentation data and metadata.
@@ -268,7 +268,7 @@ class CitysegWorkflow:
     workflow with proper caching and resource management.
     """
     
-    def __init__(self, config: Config, cache_dir: Optional[Path] = None):
+    def __init__(self, config: Config, cache_dir: Path | None = None):
         """
         Initialize the workflow manager.
         
@@ -328,7 +328,7 @@ class CitysegWorkflow:
         
         return driver_instance
     
-    def process_video(self) -> Dict[str, Any]:
+    def process_video(self) -> dict[str, Any]:
         """
         Process a video through the segmentation pipeline.
         
@@ -424,22 +424,141 @@ class CitysegWorkflow:
                 'error': str(e)
             }
     
-    def process_image(self) -> Dict[str, Any]:
+    def process_image(self) -> dict[str, Any]:
         """
         Process an image through the segmentation pipeline.
         
         Returns:
-            Dict[str, Any]: Dictionary containing workflow results.
+            dict[str, Any]: Dictionary containing workflow results.
         """
-        # TODO: Implement image processing workflow
-        raise NotImplementedError("Image processing workflow not yet implemented")
+        try:
+            logger.info(f"Processing image: {self.config.input}")
+            
+            # 1. Load the image
+            from PIL import Image
+            image = Image.open(self.config.input).convert("RGB")
+            
+            # 2. Resize if needed
+            if self.config.model.max_size:
+                image.thumbnail(
+                    (self.config.model.max_size, self.config.model.max_size)
+                )
+                
+            # 3. Create and initialize segmentation pipeline
+            pipeline = create_segmentation_pipeline(self.config.model)
+            
+            # 4. Process image through pipeline
+            logger.info(f"Processing image through segmentation pipeline")
+            result = pipeline([image])[0]
+            seg_map = result["seg_map"]
+            
+            # 5. Create outputs based on configuration
+            output_path = self.config.get_output_path()
+            results = {}
+            
+            # 6. Save raw segmentation if requested
+            if self.config.save_raw_segmentation:
+                raw_seg_path = output_path.with_name(f"{output_path.stem}_raw_segmentation.png")
+                Image.fromarray(seg_map.astype(np.uint8)).save(raw_seg_path)
+                results["raw_segmentation"] = str(raw_seg_path)
+                logger.info(f"Raw segmentation saved to {raw_seg_path}")
+            
+            # 7. Save colored segmentation if requested
+            if self.config.save_colored_segmentation or self.config.save_overlay:
+                from .visualization_handler import VisualizationHandler
+                visualizer = VisualizationHandler()
+                
+                if self.config.save_colored_segmentation:
+                    colored_seg_path = output_path.with_name(f"{output_path.stem}_colored_segmentation.png")
+                    colored_seg = visualizer.visualize_segmentation(
+                        np.array(image), seg_map, result["palette"], colored_only=True
+                    )
+                    Image.fromarray(colored_seg).save(colored_seg_path)
+                    results["colored_segmentation"] = str(colored_seg_path)
+                    logger.info(f"Colored segmentation saved to {colored_seg_path}")
+                
+                if self.config.save_overlay:
+                    overlay_path = output_path.with_name(f"{output_path.stem}_overlay.png")
+                    overlay = visualizer.visualize_segmentation(
+                        np.array(image), seg_map, result["palette"], colored_only=False
+                    )
+                    Image.fromarray(overlay).save(overlay_path)
+                    results["overlay"] = str(overlay_path)
+                    logger.info(f"Overlay saved to {overlay_path}")
+            
+            # 8. Analyze segmentation results
+            if self.config.analyze_results:
+                from .segmentation_analyzer import SegmentationAnalyzer
+                analyzer = SegmentationAnalyzer()
+                
+                # Get the number of categories from the model
+                num_categories = len(result.get("id2label", {}) or pipeline.model.config.id2label)
+                
+                # Analyze the segmentation map
+                analysis = analyzer.analyze_segmentation_map(seg_map, num_categories)
+                
+                # Create a more comprehensive metadata
+                metadata = {
+                    "model_name": self.config.model.name,
+                    "model_type": self.config.model.model_type,
+                    "id2label": pipeline.model.config.id2label if hasattr(pipeline.model, "config") else {},
+                    "palette": result.get("palette", []).tolist() if isinstance(result.get("palette", []), np.ndarray) else []
+                }
+                
+                # Get counts and percentages
+                counts = {category_id: count for category_id, (count, _) in analysis.items()}
+                percentages = {category_id: percentage for category_id, (_, percentage) in analysis.items()}
+                
+                # Save using the Parquet storage adapter
+                from .storage_adapter import ParquetAnalysisStorage
+                analysis_storage = ParquetAnalysisStorage()
+                parquet_path = analysis_storage.save_category_analysis(
+                    counts,
+                    percentages,
+                    output_path.with_name(f"{output_path.stem}_category_analysis")
+                )
+                results["analysis"] = str(parquet_path)
+                
+                # Also save as CSV for backward compatibility
+                counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
+                percentages_file = output_path.with_name(f"{output_path.stem}_category_percentages.csv")
+                
+                with open(counts_file, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["category_id", "pixel_count"])
+                    for category_id, count in counts.items():
+                        writer.writerow([category_id, count])
+                
+                with open(percentages_file, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["category_id", "percentage"])
+                    for category_id, percentage in percentages.items():
+                        writer.writerow([category_id, percentage])
+                
+                results["counts_csv"] = str(counts_file)
+                results["percentages_csv"] = str(percentages_file)
+                
+                logger.info(f"Category analysis saved to {parquet_path}")
+                logger.info(f"Category counts saved to {counts_file}")
+                logger.info(f"Category percentages saved to {percentages_file}")
+            
+            logger.info("Image processing complete")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error processing image: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                'error': str(e)
+            }
     
-    def process(self) -> Dict[str, Any]:
+    def process(self) -> dict[str, Any]:
         """
         Process the input based on its type.
         
         Returns:
-            Dict[str, Any]: Dictionary containing workflow results.
+            dict[str, Any]: Dictionary containing workflow results.
         """
         from .config import InputType
         
@@ -454,7 +573,7 @@ class CitysegWorkflow:
             raise ValueError(f"Unsupported input type: {self.config.input_type}")
 
 
-def create_workflow(config: Config, cache_dir: Optional[Path] = None) -> CitysegWorkflow:
+def create_workflow(config: Config, cache_dir: Path | None = None) -> CitysegWorkflow:
     """
     Create a CitySeg workflow for the given configuration.
     

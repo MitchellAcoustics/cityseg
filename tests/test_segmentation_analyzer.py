@@ -34,7 +34,7 @@ class TestSegmentationAnalyzer:
             Dict[str, Any]: A dictionary containing sample metadata.
         """
         return {
-            "label_ids": {0: "background", 1: "foreground", 2: "edge"},
+            "label_ids": {"0": "background", "1": "foreground", "2": "edge"},
             "frame_step": 5,
         }
 
@@ -63,7 +63,7 @@ class TestSegmentationAnalyzer:
                 result[category][1], expected[category][1], rtol=1e-9
             ), f"Percentage for category {category} is not close enough"
 
-    @patch("cityseg.segmentation_analyzer.get_segmentation_data_batch")
+    @patch("cityseg.segmentation_analyzer.get_segmentation_batch")
     @patch("cityseg.segmentation_analyzer.open", new_callable=mock_open)
     @patch("cityseg.segmentation_analyzer.csv.writer")
     @patch("cityseg.segmentation_analyzer.logger")
@@ -81,7 +81,7 @@ class TestSegmentationAnalyzer:
         tmp_path,
     ):
         """
-        Test the analyze_results method.
+        Test the analyze_results_legacy method.
 
         This test verifies that the method correctly processes segmentation data,
         writes results to CSV files, and generates statistics.
@@ -92,7 +92,7 @@ class TestSegmentationAnalyzer:
             mock_logger: Mocked logger object.
             mock_csv_writer: Mocked CSV writer object.
             mock_open: Mocked open function.
-            mock_get_data: Mocked get_segmentation_data_batch function.
+            mock_get_data: Mocked get_segmentation_batch function.
             sample_metadata (Dict[str, Any]): The sample metadata fixture.
             tmp_path (Path): Pytest fixture for a temporary directory path.
         """
@@ -111,8 +111,8 @@ class TestSegmentationAnalyzer:
         )
         mock_read_csv.return_value = mock_df
 
-        output_path = tmp_path / "test_output.h5"
-        SegmentationAnalyzer.analyze_results(
+        output_path = tmp_path / "test_output.zarr"
+        SegmentationAnalyzer.analyze_results_legacy(
             mock_segmentation_data, sample_metadata, output_path
         )
 

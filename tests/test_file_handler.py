@@ -1,17 +1,29 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import h5py
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
+import zarr
 
 from cityseg.config import Config
 from cityseg.file_handler import FileHandler
+from cityseg.storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage
 
 
 @pytest.fixture
-def temp_hdf_file(tmp_path):
-    file_path = tmp_path / "test.hdf5"
+def temp_zarr_file(tmp_path):
+    file_path = tmp_path / "test.zarr"
+    yield file_path
+    if file_path.exists():
+        import shutil
+        shutil.rmtree(file_path)
+
+
+@pytest.fixture
+def temp_parquet_file(tmp_path):
+    file_path = tmp_path / "test.parquet"
     yield file_path
     if file_path.exists():
         file_path.unlink()
@@ -26,51 +38,66 @@ def temp_video_file(tmp_path):
         file_path.unlink()
 
 
-def test_saves_hdf_file_correctly(temp_hdf_file):
-    segmentation_data = np.random.rand(10, 10)
-    metadata = {"frame_step": 1, "palette": np.array([1, 2, 3])}
-    FileHandler.save_hdf_file(temp_hdf_file, segmentation_data, metadata)
-    with h5py.File(temp_hdf_file, "r") as f:
-        assert "segmentation" in f
-        assert "metadata" in f
-        assert np.array_equal(f["segmentation"], segmentation_data)
-        loaded_metadata = json.loads(f["metadata"][()])
-        assert loaded_metadata["frame_step"] == 1
-        assert loaded_metadata["palette"] == [1, 2, 3]
-
-
-def test_loads_hdf_file_correctly(temp_hdf_file):
-    segmentation_data = np.random.rand(10, 10)
+def test_verifies_zarr_file_correctly(temp_zarr_file):
+    # Create sample segmentation data and metadata
+    frames, height, width = 10, 100, 100
+    segmentation_data = np.random.randint(0, 10, size=(frames, height, width), dtype=np.uint8)
     metadata = {"frame_step": 1, "palette": [1, 2, 3]}
-    with h5py.File(temp_hdf_file, "w") as f:
-        f.create_dataset("segmentation", data=segmentation_data)
-        f.create_dataset("metadata", data=json.dumps(metadata))
-    hdf_file, loaded_metadata = FileHandler.load_hdf_file(temp_hdf_file)
-    assert np.array_equal(hdf_file["segmentation"], segmentation_data)
-    assert loaded_metadata["frame_step"] == 1
-    assert np.array_equal(loaded_metadata["palette"], np.array([1, 2, 3]))
-
-
-def test_verifies_hdf_file_correctly(temp_hdf_file):
-    segmentation_data = np.random.rand(10, 10)
-    metadata = {"frame_step": 1}
-    with h5py.File(temp_hdf_file, "w") as f:
-        f.create_dataset("segmentation", data=segmentation_data)
-        f.create_dataset("metadata", data=json.dumps(metadata))
+    
+    # Create xarray dataset
+    data_array = xr.DataArray(
+        segmentation_data,
+        dims=["time", "y", "x"],
+        coords={
+            "time": np.arange(frames),
+            "y": np.arange(height),
+            "x": np.arange(width)
+        }
+    )
+    dataset = xr.Dataset({"segmentation": data_array})
+    
+    # Add metadata as attributes
+    for key, value in metadata.items():
+        dataset.attrs[key] = value
+    
+    # Save to Zarr
+    dataset.to_zarr(temp_zarr_file, mode='w')
+    
+    # Verify with FileHandler
     mock_config = MagicMock(spec=Config)
     mock_config.frame_step = 1
-    assert FileHandler.verify_hdf_file(temp_hdf_file, mock_config) is True
+    assert FileHandler.verify_zarr_file(temp_zarr_file, mock_config) is True
 
 
-def test_fails_verification_for_invalid_hdf_file(temp_hdf_file):
-    segmentation_data = np.random.rand(10, 10)
-    metadata = {"frame_step": 2}
-    with h5py.File(temp_hdf_file, "w") as f:
-        f.create_dataset("segmentation", data=segmentation_data)
-        f.create_dataset("metadata", data=json.dumps(metadata))
+def test_fails_verification_for_invalid_zarr_file(temp_zarr_file):
+    # Create sample segmentation data with mismatched frame_step
+    frames, height, width = 10, 100, 100
+    segmentation_data = np.random.randint(0, 10, size=(frames, height, width), dtype=np.uint8)
+    metadata = {"frame_step": 2}  # Different from config
+    
+    # Create xarray dataset
+    data_array = xr.DataArray(
+        segmentation_data,
+        dims=["time", "y", "x"],
+        coords={
+            "time": np.arange(frames),
+            "y": np.arange(height),
+            "x": np.arange(width)
+        }
+    )
+    dataset = xr.Dataset({"segmentation": data_array})
+    
+    # Add metadata as attributes
+    for key, value in metadata.items():
+        dataset.attrs[key] = value
+    
+    # Save to Zarr
+    dataset.to_zarr(temp_zarr_file, mode='w')
+    
+    # Verify with FileHandler using config with different frame_step
     mock_config = MagicMock(spec=Config)
     mock_config.frame_step = 1
-    assert FileHandler.verify_hdf_file(temp_hdf_file, mock_config) is False
+    assert FileHandler.verify_zarr_file(temp_zarr_file, mock_config) is False
 
 
 def test_verifies_video_file_correctly(temp_video_file):
@@ -103,3 +130,46 @@ def test_fails_verification_for_empty_analysis_files(tmp_path):
     counts_file.touch()
     percentages_file.touch()
     assert FileHandler.verify_analysis_files(counts_file, percentages_file) is False
+
+
+def test_verifies_parquet_file_correctly(temp_parquet_file):
+    # Create sample analysis data
+    data = [
+        {"category_id": 0, "pixel_count": 1000, "percentage": 10.0},
+        {"category_id": 1, "pixel_count": 2000, "percentage": 20.0},
+        {"category_id": 2, "pixel_count": 7000, "percentage": 70.0},
+    ]
+    df = pd.DataFrame(data)
+    
+    # Save to Parquet
+    df.to_parquet(temp_parquet_file, index=False)
+    
+    # Verify with FileHandler
+    assert FileHandler.verify_parquet_file(temp_parquet_file) is True
+
+
+def test_fails_verification_for_invalid_parquet_file(temp_parquet_file):
+    # Create sample data with missing required columns
+    data = [
+        {"category_id": 0, "pixel_count": 1000},  # Missing percentage column
+        {"category_id": 1, "pixel_count": 2000},
+        {"category_id": 2, "pixel_count": 7000},
+    ]
+    df = pd.DataFrame(data)
+    
+    # Save to Parquet
+    df.to_parquet(temp_parquet_file, index=False)
+    
+    # Verify with FileHandler
+    assert FileHandler.verify_parquet_file(temp_parquet_file) is False
+
+
+def test_fails_verification_for_empty_parquet_file(temp_parquet_file):
+    # Create empty DataFrame
+    df = pd.DataFrame()
+    
+    # Save to Parquet
+    df.to_parquet(temp_parquet_file, index=False)
+    
+    # Verify with FileHandler
+    assert FileHandler.verify_parquet_file(temp_parquet_file) is False
