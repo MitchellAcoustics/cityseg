@@ -1,5 +1,4 @@
 import pytest
-import os
 import tempfile
 from pathlib import Path
 
@@ -7,6 +6,7 @@ from cityseg.core.config import Config, ModelConfig, VisualizationConfig
 
 
 # --- Path fixtures ---
+
 
 @pytest.fixture
 def example_video_path():
@@ -44,6 +44,7 @@ def test_fixture_video_path():
 
 # --- Directory fixtures ---
 
+
 @pytest.fixture
 def test_temp_dir(tmp_path):
     """Create a temporary directory for test outputs."""
@@ -59,6 +60,7 @@ def test_output_dir():
 
 # --- Model fixtures ---
 
+
 @pytest.fixture(scope="session")
 def test_model_name():
     """Return the model name to use for testing."""
@@ -73,13 +75,16 @@ def test_model_type():
 
 # --- Configuration fixtures ---
 
+
 @pytest.fixture
-def test_video_config(test_temp_dir, example_video_path, test_model_name, test_model_type):
+def test_video_config(
+    test_temp_dir, example_video_path, test_model_name, test_model_type
+):
     """Create a complete test configuration for video processing."""
     # Configure temporary output directory
     output_dir = test_temp_dir / "video_output"
     output_dir.mkdir(exist_ok=True)
-    
+
     return Config(
         input=example_video_path,
         output_dir=output_dir,
@@ -106,12 +111,14 @@ def test_video_config(test_temp_dir, example_video_path, test_model_name, test_m
 
 
 @pytest.fixture
-def test_image_config(test_temp_dir, example_image_path, test_model_name, test_model_type):
+def test_image_config(
+    test_temp_dir, example_image_path, test_model_name, test_model_type
+):
     """Create a complete test configuration for image processing."""
     # Configure temporary output directory
     output_dir = test_temp_dir / "image_output"
     output_dir.mkdir(exist_ok=True)
-    
+
     return Config(
         input=example_image_path,
         output_dir=output_dir,

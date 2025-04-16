@@ -2,6 +2,8 @@
 
 CitySeg is a flexible and efficient semantic segmentation pipeline for processing images and videos of urban environments. It supports multiple segmentation models and datasets, with capabilities for processing high-resolution inputs and comprehensive result analysis.
 
+> **Version 0.4.0** introduces a complete reorganization to a modular component-based architecture, with enhanced testing infrastructure and improved storage mechanisms. The legacy interface remains available for backward compatibility. See the [Changelog](docs/changelog.md) for details.
+
 ## Features
 
 - Support for multiple segmentation models (OneFormer)
@@ -141,23 +143,32 @@ Confirmed not to work due to issues with the Hugging Face pipeline:
 
 ## Project Structure
 
-The project is organized into several Python modules, each serving a specific purpose within the CitySeg pipeline:
+The project has been reorganized into a modular component-based architecture for better maintainability and extensibility:
 
 - `main.py`: Entry point of the application, responsible for initializing and running the segmentation pipeline.
-- `config.py`: Defines configuration classes and handles loading and validating configuration settings.
-- `pipeline.py`: Implements the core segmentation pipeline, including model loading and inference.
-- `workflow.py`: Implements the Hamilton-based workflow for processing with proper caching.
-- `video_resource.py`: Resource manager for video operations with proper cleanup.
-- `storage_adapter.py`: Manages data storage using Zarr and Parquet formats.
-- `processors.py`: Contains classes for processing images, videos, and directories, managing the segmentation workflow.
-- `segmentation_analyzer.py`: Provides functionality for analyzing segmentation results, including computing statistics and generating reports.
-- `video_file_iterator.py`: Implements an iterator for efficiently processing multiple video files in a directory.
-- `visualization_handler.py`: Handles the visualization of segmentation results using color palettes.
-- `utils.py`: Provides utility functions for various tasks, including data handling and logging.
-- `palettes.py`: Defines color palettes for different datasets used in segmentation.
-- `exceptions.py`: Custom exception classes for error handling throughout the pipeline.
+- `core/`: Core functionality and configuration:
+  - `config.py`: Configuration classes and validation
+  - `exceptions.py`: Custom exception classes for error handling
+- `components/`: Modular components implementing core functionality:
+  - `image.py`: Image processing operations
+  - `video.py`: Video handling and frame extraction
+  - `segmentation.py`: Segmentation model integration
+  - `dataset.py`: Dataset handling and management
+  - `pipeline.py`: Pipeline creation and coordination
+- `analysis/`: Analysis and visualization:
+  - `analyzer.py`: Segmentation analysis and metrics
+  - `visualization.py`: Visualization of segmentation results
+- `storage/`: Data storage and retrieval:
+  - `storage.py`: Zarr and Parquet storage adapters
+- `utils/`: Utility functions:
+  - `common.py`: Common utility functions
+  - `palettes.py`: Color palettes for different datasets
+- `workflow/`: Hamilton-based workflow engine:
+  - `hamilton.py`: Workflow definitions and execution
+- `legacy/`: Backwards compatibility adapters:
+  - `processors.py`: Legacy processor interface
 
-This modular structure allows for easy maintenance and extension of the CitySeg pipeline, facilitating the addition of new features and models.
+This modular structure allows for easy maintenance and extension of the CitySeg pipeline, with clear separation of concerns between components.
 
 ## Logging
 

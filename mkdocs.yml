@@ -38,15 +38,29 @@ nav:
 #    - Image Processing: user_guide/image_processing.md
 #    - Video Processing: user_guide/video_processing.md
 #    - Multi-Video Processing: user_guide/multi_video_processing.md
+  - Demos:
+    - Component Architecture: demos/component_demo.md
   - API Reference:
-    - Config: api/config.md
-    - Pipeline: api/pipeline.md
-    - Processors: api/processors.md
-    - Segments Analysis: api/segments_analysis.md
-    - Handlers: api/handlers.md
-    - Utils: api/utils.md
-    - Palettes: api/palettes.md
-    - Exceptions: api/exceptions.md
+    - Core:
+      - Config: api/core/config.md
+      - Exceptions: api/core/exceptions.md
+    - Components:
+      - Image: api/components/image.md
+      - Video: api/components/video.md
+      - Segmentation: api/components/segmentation.md
+      - Dataset: api/components/dataset.md
+      - Pipeline: api/components/pipeline.md
+    - Analysis:
+      - Analyzer: api/analysis/analyzer.md
+      - Visualization: api/analysis/visualization.md
+    - Storage: api/storage/storage.md
+    - Utils:
+      - Common: api/utils/common.md
+      - Palettes: api/utils/palettes.md
+    - Workflow:
+      - Hamilton: api/workflow/hamilton.md
+    - Legacy:
+      - Processors: api/legacy/processors.md
   - Contributing: contributing.md
   - Changelog: changelog.md
 

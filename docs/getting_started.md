@@ -12,7 +12,11 @@ pip install cityseg
 
 ## Basic Usage
 
-Here's a simple example to get you started:
+CitySeg offers two ways to use the library: the legacy interface for backward compatibility and the new component-based API for more flexibility.
+
+### Legacy Interface
+
+The simplest way to use CitySeg with the legacy interface:
 
 ```python
 import cityseg as cs
@@ -20,11 +24,44 @@ import cityseg as cs
 # Load configuration from a YAML file
 config = cs.Config.from_yaml("path/to/your/config.yaml")
 
-# Create processor
+# Create processor (legacy interface)
 processor = cs.create_processor(config)
 
 # Process input
 processor.process()
+```
+
+### Component-based API
+
+For more control, you can use the component-based API:
+
+```python
+import cityseg as cs
+
+# Load configuration
+config = cs.Config.from_yaml("path/to/your/config.yaml")
+
+# For complete pipeline with caching using Hamilton
+result = cs.process(config)
+
+# Or use components directly for more control
+from cityseg.components import ImageProcessor, SegmentationProcessor
+from cityseg.analysis import VisualizationHandler
+
+# Load and process an image
+image = ImageProcessor.load_image(config.input)
+resized_image = ImageProcessor.resize_image(image, config.model.max_size)
+
+# Create the segmentation pipeline
+segmentation_pipeline = SegmentationProcessor.create_pipeline(config.model)
+
+# Process the image
+result = SegmentationProcessor.process_image(resized_image, segmentation_pipeline)
+
+# Visualize the result
+visualization = VisualizationHandler.visualize_segmentation(
+    image, result["seg_map"], result.get("palette")
+)
 ```
 
 ## Configuration

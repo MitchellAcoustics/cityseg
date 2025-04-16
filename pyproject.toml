@@ -1,6 +1,6 @@
 [project]
 name = "cityseg"
-version = "0.3.1dev3"
+version = "0.4.0dev1"
 description = "A flexible and efficient semantic segmentation pipeline for processing images and videos"
 authors = [
     { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" },
@@ -45,6 +45,7 @@ packages = ["src/cityseg"]
 [dependency-groups]
 dev = ["jupyter>=1.1.1", "rich>=13.9.4"]
 docs = [
+    "matplotlib>=3.10.1",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.5.44",
     "mkdocstrings[python]>=0.27.0",
@@ -71,7 +72,7 @@ markers = [
 exclude = ["*.hdf5", "docs/tutorials", "docs/img"]
 
 [tool.bumpver]
-current_version = "v0.3.1rc0"
+current_version = "v0.4.0dev1"
 version_pattern = "vMAJOR.MINOR.PATCH[[-]PYTAGNUM]"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"

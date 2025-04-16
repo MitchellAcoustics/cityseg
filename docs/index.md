@@ -32,19 +32,30 @@ For more detailed information on how to use CitySeg, check out our [Getting Star
 
 ## Project Structure
 
-The project is organized into several Python modules, each serving a specific purpose within the CitySeg pipeline:
+The project is organized into logical modules with a component-based architecture:
 
 - `main.py`: Entry point of the application, responsible for initializing and running the segmentation pipeline.
-- `config.py`: Defines configuration classes and handles loading and validating configuration settings.
-- `pipeline.py`: Implements the core segmentation pipeline, including model loading and inference.
-- `processors.py`: Contains classes for processing images, videos, and directories, managing the segmentation workflow.
-- `segmentation_analyzer.py`: Provides functionality for analyzing segmentation results, including computing statistics and generating reports.
-- `video_file_iterator.py`: Implements an iterator for efficiently processing multiple video files in a directory.
-- `visualization_handler.py`: Handles the visualization of segmentation results using color palettes.
-- `file_handler.py`: Manages file operations related to saving and loading segmentation data and metadata.
-- `utils.py`: Provides utility functions for various tasks, including data handling and logging.
-- `palettes.py`: Defines color palettes for different datasets used in segmentation.
-- `exceptions.py`: Custom exception classes for error handling throughout the pipeline.
+- `core/`: Core functionality and configuration:
+  - `config.py`: Configuration classes and validation
+  - `exceptions.py`: Custom exception classes for error handling
+- `components/`: Modular components implementing core functionality:
+  - `image.py`: Image processing operations
+  - `video.py`: Video handling and frame extraction
+  - `segmentation.py`: Segmentation model integration
+  - `dataset.py`: Dataset handling and management
+  - `pipeline.py`: Pipeline creation and coordination
+- `analysis/`: Analysis and visualization:
+  - `analyzer.py`: Segmentation analysis and metrics
+  - `visualization.py`: Visualization of segmentation results
+- `storage/`: Data storage and retrieval:
+  - `storage.py`: Zarr and Parquet storage adapters
+- `utils/`: Utility functions:
+  - `common.py`: Common utility functions
+  - `palettes.py`: Color palettes for different datasets
+- `workflow/`: Hamilton-based workflow engine:
+  - `hamilton.py`: Workflow definitions and execution
+- `legacy/`: Backwards compatibility adapters:
+  - `processors.py`: Legacy processor interface
 
 
 For detailed API documentation, visit our [API Reference](api/config.md) section.

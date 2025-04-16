@@ -5,11 +5,10 @@ pointing to valid files/directories.
 """
 
 import os
-import pytest
-from pathlib import Path
 
 
 # --- Tests for example data fixtures ---
+
 
 def test_example_video_path(example_video_path):
     """Test that the example video path fixture returns a valid file."""
@@ -34,6 +33,7 @@ def test_example_image_path(example_image_path):
 
 
 # --- Tests for fixtures directory fixtures ---
+
 
 def test_fixture_image_path(test_fixture_image_path):
     """Test that the fixture image path points to a valid file."""
@@ -62,6 +62,7 @@ def test_fixture_video_path(test_fixture_video_path):
 
 
 # --- Tests for directory fixtures ---
+
 
 def test_temp_dir_fixture(test_temp_dir):
     """Test that the temporary directory fixture creates a valid directory."""
@@ -94,6 +95,7 @@ def test_output_dir_fixture(test_output_dir):
 
 
 # --- Tests for configuration fixtures ---
+
 
 def test_video_config_fixture(test_video_config):
     """Test that the video configuration fixture is valid."""

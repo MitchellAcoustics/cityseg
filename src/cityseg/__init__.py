@@ -7,7 +7,7 @@ segmentation models and datasets, with capabilities for processing high-resoluti
 inputs and comprehensive result analysis.
 """
 
-__version__ = "0.3.1rc0"
+__version__ = "0.4.0dev1"
 
 # Core functionality
 from .core import (
