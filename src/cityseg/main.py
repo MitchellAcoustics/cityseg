@@ -17,7 +17,7 @@ from cityseg.exceptions import (
     ModelError,
     ProcessingError,
 )
-from cityseg.processors import create_processor
+from cityseg.workflow import create_workflow
 from cityseg.utils import setup_logging
 
 
@@ -43,6 +43,17 @@ def main() -> None:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="Directory to use for caching intermediate results",
+    )
+    parser.add_argument(
+        "--disable-cache",
+        action="store_true",
+        help="Disable caching of intermediate results",
+    )
     args = parser.parse_args()
 
     setup_logging(args.log_level, args.verbose)
@@ -52,12 +63,22 @@ def main() -> None:
         config = Config.from_yaml(Path(args.config))
         logger.info(f"Loaded configuration: {config}")
 
-        logger.info(f"Creating processor for input type: {config.input_type}")
-        processor = create_processor(config)
-        logger.debug(f"Processor created: {type(processor).__name__}")
+        # Determine cache directory
+        cache_dir = None
+        if not args.disable_cache:
+            if args.cache_dir:
+                cache_dir = Path(args.cache_dir)
+            else:
+                # Use a default cache directory next to the output
+                cache_dir = config.get_output_path().parent / ".cache"
+                cache_dir.mkdir(exist_ok=True)
 
-        processor.process()
-        logger.info("Processing completed successfully")
+        # Create and execute workflow
+        logger.info(f"Creating workflow for input type: {config.input_type}")
+        workflow = create_workflow(config, cache_dir)
+        
+        result = workflow.process()
+        logger.info(f"Processing completed successfully: {result}")
 
     except ConfigurationError as e:
         logger.error(f"Configuration error: {str(e)}")

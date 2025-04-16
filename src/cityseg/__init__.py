@@ -8,9 +8,9 @@ and datasets.
 Main components:
 - Config: Configuration class for the pipeline
 - SegmentationPipeline: Core pipeline for semantic segmentation
-- SegmentationProcessor: Processor for individual images and videos
-- DirectoryProcessor: Processor for handling multiple videos in a directory
-- create_processor: Factory function for creating image/video processors
+- VideoResource: Resource manager for video operations
+- Storage adapters: Efficient storage of segmentation data using Zarr and Parquet
+- Workflow: Hamilton-based workflow for processing with proper caching
 - Exceptions: Custom exception classes for error handling
 
 The package also includes utility functions for segmentation map analysis,
@@ -29,9 +29,16 @@ from .pipeline import SegmentationPipeline, create_segmentation_pipeline
 from .processing_plan import ProcessingPlan
 from .processors import DirectoryProcessor, SegmentationProcessor, create_processor
 from .segmentation_analyzer import SegmentationAnalyzer
+from .storage_adapter import (
+    ZarrSegmentationStorage,
+    ParquetAnalysisStorage,
+    StorageFactory,
+)
 from .utils import setup_logging
 from .video_file_iterator import VideoFileIterator
+from .video_resource import VideoResource
 from .visualization_handler import VisualizationHandler
+from .workflow import CitysegWorkflow, create_workflow
 
 __all__ = [
     "Config",
@@ -51,4 +58,10 @@ __all__ = [
     "VisualizationHandler",
     "ProcessingPlan",
     "VideoFileIterator",
+    "VideoResource",
+    "ZarrSegmentationStorage",
+    "ParquetAnalysisStorage",
+    "StorageFactory",
+    "CitysegWorkflow",
+    "create_workflow",
 ]

@@ -10,8 +10,10 @@ CitySeg is a flexible and efficient semantic segmentation pipeline for processin
 - Comprehensive analysis of segmentation results, including category-wise statistics
 - Support for both image and video inputs
 - Multi-video processing capability for entire directories
-- Caching of processed segmentation maps in HDF5 format for quick re-analysis
-- Output includes segmentation maps, colored segmentations, overlay visualizations, and detailed CSV reports
+- Efficient storage using Zarr for segmentation data and Parquet for analysis results
+- Intelligent caching and workflow management with Hamilton
+- Output includes segmentation maps, colored segmentations, overlay visualizations
+- Proper resource management for videos and memory-efficient processing
 - Configurable logging with console and file outputs
 
 ## Installation
@@ -40,8 +42,11 @@ CitySeg requires the following main packages:
 - opencv-python (cv2)
 - numpy
 - Pillow (PIL)
-- h5py
 - pandas
+- xarray
+- zarr
+- pyarrow
+- hamilton
 - tqdm
 - pyyaml
 - loguru
@@ -61,8 +66,31 @@ For a complete list of dependencies, please refer to the `pyproject.toml` file.
    Optional arguments:
    - `--log-level`: Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
    - `--verbose`: Enable verbose logging
+   - `--cache-dir`: Directory to use for caching intermediate results
+   - `--disable-cache`: Disable caching of intermediate results
 
 3. The pipeline will process the input and generate various outputs including segmentation maps, visualizations, and analysis reports.
+
+## Storage and Caching
+
+CitySeg uses modern data formats for efficient storage and retrieval:
+
+- **Zarr** for n-dimensional segmentation data
+  - Chunked storage for efficient access to video frames
+  - Compressed storage to reduce disk usage
+  - Metadata embedded directly with the data
+
+- **Parquet** for tabular analysis results
+  - Highly efficient columnar storage
+  - Advanced filtering and querying capabilities
+  - Great performance for analytical workloads
+
+- **Hamilton** for workflow management
+  - Automatic caching of intermediate results
+  - Precise dependency tracking between steps
+  - Function-level granularity for optimal reuse
+
+These improvements significantly reduce memory usage and improve performance, especially for large video files and when reprocessing with the same configuration.
 
 ## Configuration
 
@@ -118,11 +146,13 @@ The project is organized into several Python modules, each serving a specific pu
 - `main.py`: Entry point of the application, responsible for initializing and running the segmentation pipeline.
 - `config.py`: Defines configuration classes and handles loading and validating configuration settings.
 - `pipeline.py`: Implements the core segmentation pipeline, including model loading and inference.
+- `workflow.py`: Implements the Hamilton-based workflow for processing with proper caching.
+- `video_resource.py`: Resource manager for video operations with proper cleanup.
+- `storage_adapter.py`: Manages data storage using Zarr and Parquet formats.
 - `processors.py`: Contains classes for processing images, videos, and directories, managing the segmentation workflow.
 - `segmentation_analyzer.py`: Provides functionality for analyzing segmentation results, including computing statistics and generating reports.
 - `video_file_iterator.py`: Implements an iterator for efficiently processing multiple video files in a directory.
 - `visualization_handler.py`: Handles the visualization of segmentation results using color palettes.
-- `file_handler.py`: Manages file operations related to saving and loading segmentation data and metadata.
 - `utils.py`: Provides utility functions for various tasks, including data handling and logging.
 - `palettes.py`: Defines color palettes for different datasets used in segmentation.
 - `exceptions.py`: Custom exception classes for error handling throughout the pipeline.
