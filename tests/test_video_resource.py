@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import cv2
 import numpy as np
 import pytest
 from PIL import Image
@@ -27,11 +28,11 @@ class TestVideoResource:
         mock = MagicMock()
         mock.isOpened.return_value = True
         mock.get.side_effect = lambda prop: {
-            0: 1920,  # width
-            1: 1080,  # height
-            5: 30.0,  # fps
-            7: 300,   # frame count
-            38: "avc1"  # codec (fake value for testing)
+            cv2.CAP_PROP_FRAME_WIDTH: 1920,  # width (0)
+            cv2.CAP_PROP_FRAME_HEIGHT: 1080,  # height (1)
+            cv2.CAP_PROP_FPS: 30.0,  # fps (5)
+            cv2.CAP_PROP_FRAME_COUNT: 300,   # frame count (7)
+            cv2.CAP_PROP_FOURCC: 1635017060  # codec (fake value for testing) (38)
         }.get(prop, 0)
         
         # Mock read to return a frame and success
@@ -93,23 +94,25 @@ class TestVideoResource:
         """Test getting frames by step size."""
         mock_video_capture.return_value = mock_cap
         
-        # Make read return True for 10 frames, then False
-        frame_count = [0]
-        def mock_read():
-            frame_count[0] += 1
-            if frame_count[0] <= 10:
+        # Override the default read behavior to control precisely
+        frames_to_return = 10
+        def custom_read():
+            nonlocal frames_to_return
+            if frames_to_return > 0:
+                frames_to_return -= 1
                 return True, np.zeros((1080, 1920, 3), dtype=np.uint8)
             return False, None
         
-        mock_cap.read.side_effect = mock_read
+        # Apply our custom read function
+        mock_cap.read.side_effect = custom_read
         
         # Mock cv2.cvtColor to return the same array
         mock_cvtcolor.side_effect = lambda frame, _: frame
         
         resource = VideoResource(mock_video_path)
         
-        # Get every 2nd frame
-        frames = resource.get_frames_by_step(frame_step=2)
+        # Get every 2nd frame with max_frames set to 5
+        frames = resource.get_frames_by_step(frame_step=2, max_frames=5)
         
         # We should get 5 frames (0, 2, 4, 6, 8)
         assert len(frames) == 5
