@@ -27,7 +27,7 @@ from transformers import (
     SegformerForSemanticSegmentation,
 )
 
-from .config import ModelConfig
+from ..core import ModelConfig
 
 
 class SegmentationPipeline(ImageSegmentationPipeline):
@@ -55,20 +55,14 @@ class SegmentationPipeline(ImageSegmentationPipeline):
         """
         if hasattr(self.model.config, "palette"):
             return np.array(self.model.config.palette, dtype=np.uint8)
-        elif "ade" in self.model.config._name_or_path:
-            from .palettes import ADE20K_PALETTE
 
-            return np.array(ADE20K_PALETTE, dtype=np.uint8)
-        elif "mapillary-vistas" in self.model.config._name_or_path:
-            from .palettes import MAPILLARY_VISTAS_PALETTE
+        # Use the common palette lookup utility
+        from ..utils import get_palette
 
-            return np.array(MAPILLARY_VISTAS_PALETTE, dtype=np.uint8)
-        elif "cityscapes" in self.model.config._name_or_path:
-            from .palettes import CITYSCAPES_PALETTE
-
-            return np.array(CITYSCAPES_PALETTE, dtype=np.uint8)
-        else:
-            return None
+        palette = get_palette(self.model.config._name_or_path)
+        if palette is not None:
+            return np.array(palette, dtype=np.uint8)
+        return None
 
     def create_single_segmentation_map(
         self, annotations: List[Dict[str, Any]], target_size: tuple
@@ -138,9 +132,7 @@ class SegmentationPipeline(ImageSegmentationPipeline):
         Returns:
             List[Dict[str, Any]]: A list of dictionaries containing segmentation maps and metadata.
         """
-        # logger.debug("Pass image(s) up to HF pipeline...")
         result = super().__call__(images, subtask="semantic", **kwargs)
-        # logger.debug("Received result from HF pipeline")
         if self._is_single_image_result(result):
             return [
                 self.create_single_segmentation_map(
@@ -167,7 +159,7 @@ def create_segmentation_pipeline(
     model name, and creates a SegmentationPipeline instance with these components.
 
     Args:
-        config:
+        config: Model configuration containing model name, type, device, etc.
         **kwargs: Additional keyword arguments to pass to the SegmentationPipeline constructor.
 
     Returns:
@@ -221,7 +213,13 @@ def create_segmentation_pipeline(
 
         if dataset == "sidewalk-semantic":
             logging.debug("Loading Sidewalk Semantic dataset label mappings...")
-            with open("SemanticSidewalk_id2label.json") as f:
+            from pathlib import Path
+
+            # Look for the JSON file in the cityseg module directory
+            module_dir = Path(__file__).parent.parent.parent
+            json_path = module_dir / "SemanticSidewalk_id2label.json"
+
+            with open(json_path) as f:
                 id2label = json.load(f)
             model.config.id2label = id2label
     else:

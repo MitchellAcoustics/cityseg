@@ -43,11 +43,11 @@ class ModelConfig:
     dataset: Optional[str] = None
     num_workers: Optional[int] = 8
     pipe_batch: Optional[int] = 1
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert the ModelConfig to a dictionary.
-        
+
         Returns:
             Dict[str, Any]: Dictionary representation of the ModelConfig.
         """

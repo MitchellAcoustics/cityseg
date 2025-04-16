@@ -3,15 +3,14 @@ This module provides a class for visualizing segmentation results using color pa
 
 It includes methods to visualize segmentation maps with color palettes and options for
 displaying colored or blended results.
-
-Classes:
-    VisualizationHandler: A class for visualizing segmentation results using color palettes.
 """
 
 from typing import List, Optional, Union
 
 import numpy as np
 from loguru import logger
+
+from ..utils import get_palette
 
 
 class VisualizationHandler:
@@ -32,6 +31,7 @@ class VisualizationHandler:
         seg_maps: Union[np.ndarray, List[np.ndarray]],
         palette: Optional[np.ndarray] = None,
         colored_only: bool = False,
+        alpha: float = 0.5,
     ) -> Union[np.ndarray, List[np.ndarray]]:
         """
         Visualizes segmentation results using color palettes.
@@ -44,6 +44,7 @@ class VisualizationHandler:
             seg_maps (Union[np.ndarray, List[np.ndarray]]): Segmentation maps or a list of maps.
             palette (Optional[np.ndarray]): Color palette for visualization. If None, a default palette is generated.
             colored_only (bool): Flag to indicate if only colored results are desired (True) or blended with the original images (False).
+            alpha (float): Alpha value for blending segmentation with original image (0.0-1.0).
 
         Returns:
             Union[np.ndarray, List[np.ndarray]]: Visualized segmentation results, either as a single array or a list of arrays.
@@ -67,7 +68,12 @@ class VisualizationHandler:
             if colored_only:
                 results.append(color_seg)
             else:
-                img = image * 0.5 + color_seg * 0.5
+                # Ensure image is uint8 for consistent blending
+                if image.dtype != np.uint8:
+                    image = image.astype(np.uint8)
+
+                # Blend with configurable alpha
+                img = image * (1 - alpha) + color_seg * alpha
                 results.append(img.astype(np.uint8))
 
         return results[0] if len(results) == 1 else results
@@ -86,17 +92,24 @@ class VisualizationHandler:
         Returns:
             np.ndarray: Color palette array for visualization, with shape (num_colors, 3).
         """
-        from .palettes import ADE20K_PALETTE
+        # Get a suitable palette (this is now in utils.common)
+        palette = get_palette("default")
 
-        if num_colors < len(ADE20K_PALETTE):
-            logger.debug(f"Using ADE20K palette with {num_colors} colors")
-            return np.array(ADE20K_PALETTE[:num_colors], dtype=np.uint8)
+        if num_colors <= len(palette):
+            logger.debug(f"Using existing palette with {num_colors} colors")
+            return np.array(palette[:num_colors], dtype=np.uint8)
         else:
             logger.debug(f"Generating custom palette for {num_colors} colors")
-            return np.array(
-                [
-                    [(i * 100) % 255, (i * 150) % 255, (i * 200) % 255]
-                    for i in range(num_colors)
-                ],
-                dtype=np.uint8,
-            )
+            # Generate evenly distributed colors in HSV space for better visual separation
+            # Then convert to RGB
+            from colorsys import hsv_to_rgb
+
+            palette = []
+            for i in range(num_colors):
+                h = i / num_colors
+                s = 0.8
+                v = 0.9
+                r, g, b = hsv_to_rgb(h, s, v)
+                palette.append([int(r * 255), int(g * 255), int(b * 255)])
+
+            return np.array(palette, dtype=np.uint8)

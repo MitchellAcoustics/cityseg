@@ -10,14 +10,15 @@ from pathlib import Path
 
 from loguru import logger
 
-from cityseg.config import Config
-from cityseg.exceptions import (
+from cityseg.core import (
+    Config,
     ConfigurationError,
     InputError,
     ModelError,
     ProcessingError,
 )
-from cityseg.utils import setup_logging
+from cityseg.utils.common import setup_logging
+from cityseg.workflow import process
 
 
 @logger.catch
@@ -26,9 +27,8 @@ def main() -> None:
     Main function to run the Semantic Segmentation Pipeline.
 
     This function parses command-line arguments, sets up logging,
-    loads the configuration, creates the appropriate processor,
-    and executes the segmentation process. It also handles and
-    logs any exceptions that occur during execution.
+    loads the configuration, and executes the segmentation process.
+    It also handles and logs any exceptions that occur during execution.
     """
     parser = argparse.ArgumentParser(description="Semantic Segmentation Pipeline")
     parser.add_argument("config", type=str, help="Path to the YAML configuration file")
@@ -74,8 +74,6 @@ def main() -> None:
 
         # Process using Hamilton
         logger.info(f"Processing input type: {config.input_type} with Hamilton")
-        from cityseg.hamilton_driver import process
-        
         result = process(config, cache_dir)
         logger.info(f"Processing completed successfully: {result}")
 
