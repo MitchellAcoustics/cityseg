@@ -58,6 +58,7 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 console_output_style = "count"
+norecursedirs = ["tests/archive", ".git", "__pycache__"]
 markers = [
     "slow: mark test as slow",
     "skip: mark test as skipped",

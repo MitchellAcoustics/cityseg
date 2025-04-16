@@ -1,0 +1,7 @@
+# Simple test model configuration
+name: "nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+model_type: "segformer"
+max_size: 640  # Smaller size for faster testing
+device: "cpu"
+num_workers: 0  # Avoid multiprocessing for tests
+pipe_batch: 1
