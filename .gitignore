@@ -22,7 +22,10 @@ src/.DS_Store
 # in progress / trials
 scripts/
 
+# Generated demo outputs
+docs/demos/outputs/
+
 /.vscode/settings.json
 
 *.hdf5
-.coverage
+.coverage*

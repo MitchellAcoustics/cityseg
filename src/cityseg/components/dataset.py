@@ -5,8 +5,9 @@ It handles creating and saving xarray datasets with proper metadata for
 both video segmentation and single image segmentation.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 import numpy as np
 import xarray as xr
@@ -31,11 +32,11 @@ class DatasetBuilder:
 
     @staticmethod
     def create_video_dataset(
-        segmentation_maps: List[np.ndarray],
-        video_metadata: Dict[str, Any],
-        frame_indices: List[int],
-        model_metadata: Dict[str, Any],
-        segmentation_metadata: Optional[Dict[str, Any]] = None,
+        segmentation_maps: list[np.ndarray],
+        video_metadata: dict[str, object],
+        frame_indices: list[int],
+        model_metadata: dict[str, object],
+        segmentation_metadata: dict[str, object] | None = None,
     ) -> xr.Dataset:
         """
         Create an xarray Dataset from video segmentation results.
@@ -105,8 +106,8 @@ class DatasetBuilder:
     @staticmethod
     def create_image_dataset(
         segmentation_map: np.ndarray,
-        model_metadata: Dict[str, Any],
-        segmentation_metadata: Optional[Dict[str, Any]] = None,
+        model_metadata: dict[str, object],
+        segmentation_metadata: dict[str, object] | None = None,
     ) -> xr.Dataset:
         """
         Create an xarray Dataset from a single image segmentation.

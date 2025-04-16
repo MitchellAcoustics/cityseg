@@ -7,8 +7,9 @@ It includes:
 3. Data transformation and processing utilities
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import xarray as xr
@@ -28,9 +29,7 @@ from ..core import Config, InputType, ModelConfig
 # --- Driver Creation Functions ---
 
 
-def create_video_driver(
-    config: Config, cache_dir: Optional[Path] = None
-) -> driver.Driver:
+def create_video_driver(config: Config, cache_dir: Path | None = None) -> driver.Driver:
     """
     Create a Hamilton driver for video processing.
 
@@ -62,9 +61,7 @@ def create_video_driver(
     return drv
 
 
-def create_image_driver(
-    config: Config, cache_dir: Optional[Path] = None
-) -> driver.Driver:
+def create_image_driver(config: Config, cache_dir: Path | None = None) -> driver.Driver:
     """
     Create a Hamilton driver for image processing.
 
@@ -97,7 +94,7 @@ def create_image_driver(
 
 
 def create_directory_driver(
-    config: Config, cache_dir: Optional[Path] = None
+    config: Config, cache_dir: Path | None = None
 ) -> driver.Driver:
     """
     Create a Hamilton driver for directory processing.
@@ -130,7 +127,7 @@ def create_directory_driver(
     return drv
 
 
-def process(config: Config, cache_dir: Optional[Path] = None) -> Dict[str, Any]:
+def process(config: Config, cache_dir: Path | None = None) -> dict[str, object]:
     """
     Process input based on configuration using the appropriate Hamilton driver.
 
@@ -167,7 +164,7 @@ def process(config: Config, cache_dir: Optional[Path] = None) -> Dict[str, Any]:
 # --- Video Processing Functions ---
 
 
-def video_metadata(video_path: str) -> Dict[str, Any]:
+def video_metadata(video_path: str) -> dict[str, object]:
     """
     Video metadata extracted from the video file.
 
@@ -181,7 +178,7 @@ def video_metadata(video_path: str) -> Dict[str, Any]:
 
 
 @fm.config.when(source="video_metadata")
-def frame_count(video_metadata: Dict[str, Any]) -> int:
+def frame_count(video_metadata: dict[str, object]) -> int:
     """
     Number of frames in the video.
 
@@ -194,7 +191,7 @@ def frame_count(video_metadata: Dict[str, Any]) -> int:
     return video_metadata["frame_count"]
 
 
-def frame_indices(frame_count: int, frame_step: int) -> List[int]:
+def frame_indices(frame_count: int, frame_step: int) -> list[int]:
     """
     Indices of the frames to extract based on the frame step.
 
@@ -209,7 +206,7 @@ def frame_indices(frame_count: int, frame_step: int) -> List[int]:
 
 
 @fm.config.when(source="video_metadata")
-def video_dimensions(video_metadata: Dict[str, Any]) -> Tuple[int, int]:
+def video_dimensions(video_metadata: dict[str, object]) -> tuple[int, int]:
     """
     Dimensions of the video frames (width, height).
 
@@ -222,7 +219,7 @@ def video_dimensions(video_metadata: Dict[str, Any]) -> Tuple[int, int]:
     return (video_metadata["width"], video_metadata["height"])
 
 
-def video_frames(video_path: str, frame_indices: List[int]) -> List[Image.Image]:
+def video_frames(video_path: str, frame_indices: list[int]) -> list[Image.Image]:
     """
     Extracted frames from the video at specified indices.
 
@@ -237,8 +234,8 @@ def video_frames(video_path: str, frame_indices: List[int]) -> List[Image.Image]
 
 
 def resized_frames(
-    video_frames: List[Image.Image], model_max_size: Optional[int]
-) -> List[Image.Image]:
+    video_frames: list[Image.Image], model_max_size: int | None
+) -> list[Image.Image]:
     """
     Resized frames for processing by the segmentation model.
 
@@ -260,9 +257,9 @@ def resized_frames(
 def segmentation_pipeline(
     model_name: str,
     model_type: str,
-    model_device: Optional[str] = None,
+    model_device: str | None = None,
     model_num_workers: int = 1,
-) -> Any:
+) -> object:
     """
     Segmentation pipeline for processing images.
 
@@ -286,8 +283,8 @@ def segmentation_pipeline(
 
 
 def segmentation_results(
-    resized_frames: List[Image.Image], segmentation_pipeline: Any
-) -> List[Dict[str, Any]]:
+    resized_frames: list[Image.Image], segmentation_pipeline: object
+) -> list[dict[str, object]]:
     """
     Segmentation results for the frames.
 
@@ -301,7 +298,9 @@ def segmentation_results(
     return SegmentationProcessor.process_batch(resized_frames, segmentation_pipeline)
 
 
-def segmentation_maps(segmentation_results: List[Dict[str, Any]]) -> List[np.ndarray]:
+def segmentation_maps(
+    segmentation_results: list[dict[str, object]],
+) -> list[np.ndarray]:
     """
     Segmentation maps extracted from the results.
 
@@ -314,7 +313,9 @@ def segmentation_maps(segmentation_results: List[Dict[str, Any]]) -> List[np.nda
     return SegmentationProcessor.extract_segmentation_maps(segmentation_results)
 
 
-def segmentation_metadata(segmentation_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+def segmentation_metadata(
+    segmentation_results: list[dict[str, object]],
+) -> dict[str, object]:
     """
     Metadata from the segmentation results.
 
@@ -331,11 +332,11 @@ def segmentation_metadata(segmentation_results: List[Dict[str, Any]]) -> Dict[st
 
 
 def segmentation_dataset(
-    segmentation_maps: List[np.ndarray],
-    video_metadata: Dict[str, Any],
-    frame_indices: List[int],
-    model_metadata: Dict[str, Any],
-    segmentation_metadata: Dict[str, Any],
+    segmentation_maps: list[np.ndarray],
+    video_metadata: dict[str, object],
+    frame_indices: list[int],
+    model_metadata: dict[str, object],
+    segmentation_metadata: dict[str, object],
 ) -> xr.Dataset:
     """
     XArray Dataset containing the segmentation data.
@@ -393,10 +394,10 @@ def analysis_path(segmentation_dataset: xr.Dataset, output_path: str) -> Path:
 
 
 def overlay_images(
-    video_frames: List[Image.Image],
-    segmentation_maps: List[np.ndarray],
-    segmentation_metadata: Dict[str, Any],
-) -> List[np.ndarray]:
+    video_frames: list[Image.Image],
+    segmentation_maps: list[np.ndarray],
+    segmentation_metadata: dict[str, object],
+) -> list[np.ndarray]:
     """
     Create overlay visualizations of the segmentation.
 
@@ -421,7 +422,9 @@ def overlay_images(
 
 
 def save_overlay_video(
-    overlay_images: List[np.ndarray], video_metadata: Dict[str, Any], output_path: str
+    overlay_images: list[np.ndarray],
+    video_metadata: dict[str, object],
+    output_path: str,
 ) -> Path:
     """
     Save overlay images as a video.
@@ -461,7 +464,9 @@ def save_overlay_video(
 
 
 def overlay_path(
-    overlay_images: List[np.ndarray], video_metadata: Dict[str, Any], output_path: str
+    overlay_images: list[np.ndarray],
+    video_metadata: dict[str, object],
+    output_path: str,
 ) -> Path:
     """
     Save the overlay visualization.
@@ -493,7 +498,7 @@ def load_image(image_path: str) -> Image.Image:
     return ImageProcessor.load_image(Path(image_path))
 
 
-def resized_image(image: Image.Image, model_max_size: Optional[int]) -> Image.Image:
+def resized_image(image: Image.Image, model_max_size: int | None) -> Image.Image:
     """
     Resize image for processing by the segmentation model.
 
@@ -508,8 +513,8 @@ def resized_image(image: Image.Image, model_max_size: Optional[int]) -> Image.Im
 
 
 def image_segmentation_result(
-    resized_image: Image.Image, segmentation_pipeline: Any
-) -> Dict[str, Any]:
+    resized_image: Image.Image, segmentation_pipeline: object
+) -> dict[str, object]:
     """
     Segmentation result for the image.
 
@@ -523,7 +528,7 @@ def image_segmentation_result(
     return SegmentationProcessor.process_image(resized_image, segmentation_pipeline)
 
 
-def image_segmentation_map(image_segmentation_result: Dict[str, Any]) -> np.ndarray:
+def image_segmentation_map(image_segmentation_result: dict[str, object]) -> np.ndarray:
     """
     Segmentation map extracted from the result.
 
@@ -537,8 +542,8 @@ def image_segmentation_map(image_segmentation_result: Dict[str, Any]) -> np.ndar
 
 
 def image_segmentation_metadata(
-    image_segmentation_result: Dict[str, Any],
-) -> Dict[str, Any]:
+    image_segmentation_result: dict[str, object],
+) -> dict[str, object]:
     """
     Metadata from the segmentation result.
 
@@ -557,8 +562,8 @@ def image_segmentation_metadata(
 
 def image_dataset(
     image_segmentation_map: np.ndarray,
-    model_metadata: Dict[str, Any],
-    image_segmentation_metadata: Dict[str, Any],
+    model_metadata: dict[str, object],
+    image_segmentation_metadata: dict[str, object],
 ) -> xr.Dataset:
     """
     XArray Dataset containing the image segmentation data.

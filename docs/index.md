@@ -1,61 +1,93 @@
 # CitySeg: Urban Semantic Segmentation Pipeline
 
-Welcome to the documentation for CitySeg, a flexible and efficient pipeline for performing semantic segmentation on images and videos of urban environments.
+> **Version 0.4.0** introduces a complete reorganization to a modular component-based architecture, with enhanced testing infrastructure and improved storage mechanisms. The legacy interface remains available for backward compatibility. See the [Changelog](changelog.md) for details.
 
-## Features
+CitySeg is a flexible and efficient pipeline for performing semantic segmentation on images and videos of urban environments, designed to handle both small-scale analyses and large dataset processing.
 
-- Support for multiple segmentation models (OneFormer)
-- Compatible with various datasets (Cityscapes, ADE20k, Mapillary Vistas)
-- Flexible image resizing for processing high-resolution inputs
-- Comprehensive analysis of segmentation results
-- Support for both image and video inputs
-- Multi-video processing capability for entire directories
-- Caching of processed segmentation maps in HDF5 format for quick re-analysis
-- Output includes segmentation maps, colored segmentations, overlay visualizations, and detailed CSV reports
+## Key Features
+
+### Model & Dataset Support
+- **Multiple Models**: SegFormer, OneFormer, Mask2Former models
+- **Various Datasets**: Compatible with Cityscapes, ADE20k, Mapillary Vistas
+- **Flexible Processing**: Automatic resolution adjustment for high-res inputs
+
+### Processing Capabilities
+- **Multiple Input Types**: Process single images, videos, or entire directories
+- **Batch Processing**: Efficient handling of large video collections
+- **Resumable Processing**: Skip already processed files for interrupted workflows
+
+### Analysis & Storage
+- **Comprehensive Analysis**: Pixel-level category distribution and statistics
+- **Advanced Storage**: Zarr format for segmentation maps and Parquet for analytics
+- **Visualization Options**: Segmentation overlays, heatmaps, and category highlighting
+
+## Architecture Overview
+
+CitySeg uses a component-based architecture that separates concerns into logical modules while providing simple high-level interfaces:
+
+```
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│   Input       │    │  Processing    │    │   Output      │
+│  Components   │───▶│  Components   │───▶│  Components   │
+└───────────────┘    └───────────────┘    └───────────────┘
+       ▲                     ▲                    ▲
+       │                     │                    │
+       └─────────────┬───────┴──────────┬────────┘
+                     │                  │
+             ┌───────────────┐  ┌──────────────┐
+             │ Configuration │  │ Workflow     │
+             │ Management    │  │ Management   │
+             └───────────────┘  └──────────────┘
+```
 
 ## Quick Start
 
+### Legacy Interface (Simplest)
 ```python
 import cityseg as cs
 
 # Load configuration
 config = cs.Config.from_yaml("config.yaml")
 
-# Create processor
-processor = cs.create_processor(config)
-
-# Process input
-processor.process()
+# Create and run processor with one line
+cs.create_processor(config).process()
 ```
 
-For more detailed information on how to use CitySeg, check out our [Getting Started](getting_started.md) guide.
+### Component-based Interface (Flexible)
+```python
+import cityseg as cs
+from cityseg.components import ImageProcessor, SegmentationProcessor
+from cityseg.analysis import VisualizationHandler
+
+# Load configuration and create components
+config = cs.Config.from_yaml("config.yaml")
+
+# Process an image with fine-grained control
+image = ImageProcessor.load_image(config.input)
+resized = ImageProcessor.resize_image(image, config.model.max_size)
+segmentation_pipeline = SegmentationProcessor.create_pipeline(config.model)
+result = SegmentationProcessor.process_image(resized, segmentation_pipeline)
+
+# Create visualization
+visualization = VisualizationHandler.visualize_segmentation(
+    image, result["seg_map"], result.get("palette"), alpha=0.6
+)
+```
+
+Explore the [Getting Started](getting_started.md) guide for detailed setup instructions and more examples.
 
 ## Project Structure
 
-The project is organized into logical modules with a component-based architecture:
+The project's modular architecture separates functionality into logical components:
 
-- `main.py`: Entry point of the application, responsible for initializing and running the segmentation pipeline.
-- `core/`: Core functionality and configuration:
-  - `config.py`: Configuration classes and validation
-  - `exceptions.py`: Custom exception classes for error handling
-- `components/`: Modular components implementing core functionality:
-  - `image.py`: Image processing operations
-  - `video.py`: Video handling and frame extraction
-  - `segmentation.py`: Segmentation model integration
-  - `dataset.py`: Dataset handling and management
-  - `pipeline.py`: Pipeline creation and coordination
-- `analysis/`: Analysis and visualization:
-  - `analyzer.py`: Segmentation analysis and metrics
-  - `visualization.py`: Visualization of segmentation results
-- `storage/`: Data storage and retrieval:
-  - `storage.py`: Zarr and Parquet storage adapters
-- `utils/`: Utility functions:
-  - `common.py`: Common utility functions
-  - `palettes.py`: Color palettes for different datasets
-- `workflow/`: Hamilton-based workflow engine:
-  - `hamilton.py`: Workflow definitions and execution
-- `legacy/`: Backwards compatibility adapters:
-  - `processors.py`: Legacy processor interface
+| Module | Description | Key Components |
+|--------|-------------|----------------|
+| `core/` | Core functionality | Configuration, exceptions |
+| `components/` | Processing components | Image, video, segmentation, pipeline |
+| `analysis/` | Result analysis | Analytics, visualization |
+| `storage/` | Data persistence | Zarr and Parquet adapters |
+| `utils/` | Common utilities | Logging, color palettes |
+| `workflow/` | Process management | Hamilton framework integration |
+| `legacy/` | Compatibility layer | Legacy processor interfaces |
 
-
-For detailed API documentation, visit our [API Reference](api/config.md) section.
+For detailed API documentation, see the [API Reference](api/core/config.md) section.

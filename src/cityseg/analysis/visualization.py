@@ -5,8 +5,7 @@ It includes methods to visualize segmentation maps with color palettes and optio
 displaying colored or blended results.
 """
 
-from typing import List, Optional, Union
-
+from __future__ import annotations
 import numpy as np
 from loguru import logger
 
@@ -27,27 +26,24 @@ class VisualizationHandler:
 
     @staticmethod
     def visualize_segmentation(
-        images: Union[np.ndarray, List[np.ndarray]],
-        seg_maps: Union[np.ndarray, List[np.ndarray]],
-        palette: Optional[np.ndarray] = None,
+        images: np.ndarray | list[np.ndarray],
+        seg_maps: np.ndarray | list[np.ndarray],
+        palette: np.ndarray | None = None,
         colored_only: bool = False,
         alpha: float = 0.5,
-    ) -> Union[np.ndarray, List[np.ndarray]]:
+    ) -> np.ndarray | list[np.ndarray]:
         """
         Visualizes segmentation results using color palettes.
 
-        This method takes input images and their corresponding segmentation maps,
-        applies the specified color palette, and returns the visualized results.
-
         Args:
-            images (Union[np.ndarray, List[np.ndarray]]): Input images or a list of images.
-            seg_maps (Union[np.ndarray, List[np.ndarray]]): Segmentation maps or a list of maps.
-            palette (Optional[np.ndarray]): Color palette for visualization. If None, a default palette is generated.
-            colored_only (bool): Flag to indicate if only colored results are desired (True) or blended with the original images (False).
-            alpha (float): Alpha value for blending segmentation with original image (0.0-1.0).
+            images: Input images or a list of images.
+            seg_maps: Segmentation maps or a list of maps.
+            palette: Color palette for visualization. If None, a default palette is generated.
+            colored_only: Flag to indicate if only colored results are desired (True) or blended with the original images (False).
+            alpha: Alpha value for blending segmentation with original image (0.0-1.0).
 
         Returns:
-            Union[np.ndarray, List[np.ndarray]]: Visualized segmentation results, either as a single array or a list of arrays.
+            np.ndarray | list[np.ndarray]: Visualized segmentation results, either as a single array or a list of arrays.
         """
         logger.debug(
             f"Visualizing segmentation for {len(images) if isinstance(images, list) else 1} images"
@@ -83,11 +79,8 @@ class VisualizationHandler:
         """
         Generates a color palette for visualization.
 
-        This method creates a color palette with a specified number of colors,
-        which can be used to visualize segmentation results.
-
         Args:
-            num_colors (int): Number of colors to generate in the palette.
+            num_colors: Number of colors to generate in the palette.
 
         Returns:
             np.ndarray: Color palette array for visualization, with shape (num_colors, 3).

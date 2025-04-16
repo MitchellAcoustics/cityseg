@@ -47,6 +47,7 @@ dev = ["jupyter>=1.1.1", "rich>=13.9.4"]
 docs = [
     "matplotlib>=3.10.1",
     "mkdocs>=1.6.1",
+    "mkdocs-jupyter>=0.25.1",
     "mkdocs-material>=9.5.44",
     "mkdocstrings[python]>=0.27.0",
 ]

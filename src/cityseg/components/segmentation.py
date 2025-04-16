@@ -5,11 +5,12 @@ It encapsulates the segmentation pipeline and provides methods to apply
 segmentation models to single images or batches of images.
 """
 
-from typing import Any, Dict, List
+from __future__ import annotations
 
 import numpy as np
 from PIL import Image
 from loguru import logger
+from typing import Callable
 
 from ..core import ModelConfig
 from .pipeline import create_segmentation_pipeline
@@ -31,7 +32,7 @@ class SegmentationProcessor:
     """
 
     @staticmethod
-    def create_pipeline(model_config: ModelConfig) -> Any:
+    def create_pipeline(model_config: ModelConfig) -> object:
         """
         Create a segmentation pipeline from a model configuration.
 
@@ -45,7 +46,10 @@ class SegmentationProcessor:
         return create_segmentation_pipeline(model_config)
 
     @staticmethod
-    def process_image(image: Image.Image, pipeline: Any) -> Dict[str, Any]:
+    def process_image(
+        image: Image.Image,
+        pipeline: Callable[[list[Image.Image]], list[dict[str, object]]],
+    ) -> dict[str, object]:
         """
         Apply segmentation to a single image.
 
@@ -61,7 +65,10 @@ class SegmentationProcessor:
         return results[0]
 
     @staticmethod
-    def process_batch(images: List[Image.Image], pipeline: Any) -> List[Dict[str, Any]]:
+    def process_batch(
+        images: list[Image.Image],
+        pipeline: Callable[[list[Image.Image]], list[dict[str, object]]],
+    ) -> list[dict[str, object]]:
         """
         Apply segmentation to a batch of images.
 
@@ -101,7 +108,7 @@ class SegmentationProcessor:
             return []
 
     @staticmethod
-    def extract_segmentation_maps(results: List[Dict[str, Any]]) -> List[np.ndarray]:
+    def extract_segmentation_maps(results: list[dict[str, object]]) -> list[np.ndarray]:
         """
         Extract segmentation maps from segmentation results.
 
@@ -114,7 +121,7 @@ class SegmentationProcessor:
         return [result["seg_map"] for result in results]
 
     @staticmethod
-    def extract_metadata(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def extract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
         """
         Extract metadata from segmentation results.
 

@@ -7,8 +7,9 @@ It includes classes and utilities for:
 3. Iterating over video files in a directory (VideoFileIterator)
 """
 
+from __future__ import annotations
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from collections.abc import Iterator
 
 import cv2
 from PIL import Image
@@ -36,7 +37,7 @@ class VideoResource:
         self.video_path = str(video_path)
         self._cap = None
 
-    def __enter__(self):
+    def __enter__(self) -> cv2.VideoCapture:
         """
         Enter the context manager and open the video file.
 
@@ -51,7 +52,9 @@ class VideoResource:
             raise IOError(f"Failed to open video: {self.video_path}")
         return self._cap
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: type | None, exc_val: Exception | None, exc_tb: object | None
+    ) -> None:
         """
         Exit the context manager and release the video resource.
 
@@ -64,12 +67,12 @@ class VideoResource:
             self._cap.release()
             self._cap = None
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, object]:
         """
         Get video metadata without keeping the resource open.
 
         Returns:
-            Dict[str, Any]: Video metadata including frame count, fps, width, and height.
+            dict[str, object]: Video metadata including frame count, fps, width, and height.
         """
         with self as cap:
             metadata = {
@@ -102,15 +105,15 @@ class VideoResource:
         )
         return codec_bytes.decode("ascii", errors="replace")
 
-    def get_frame_batch(self, indices: List[int]) -> List[Image.Image]:
+    def get_frame_batch(self, indices: list[int]) -> list[Image.Image]:
         """
         Get a batch of frames at the specified indices.
 
         Args:
-            indices (List[int]): List of frame indices to retrieve.
+            indices (list[int]): List of frame indices to retrieve.
 
         Returns:
-            List[Image.Image]: List of PIL Image objects for the requested frames.
+            list[Image.Image]: List of PIL Image objects for the requested frames.
         """
         frames = []
         with self as cap:
@@ -127,8 +130,8 @@ class VideoResource:
         return frames
 
     def get_frames_by_step(
-        self, frame_step: int, max_frames: int = None
-    ) -> List[Image.Image]:
+        self, frame_step: int, max_frames: int | None = None
+    ) -> list[Image.Image]:
         """
         Get frames from the video using a step size.
 
@@ -138,7 +141,7 @@ class VideoResource:
                                         If None, all frames are captured.
 
         Returns:
-            List[Image.Image]: List of PIL Image objects for the captured frames.
+            list[Image.Image]: List of PIL Image objects for the captured frames.
         """
         frames = []
         with self as cap:
@@ -175,7 +178,9 @@ class VideoResource:
 
         return frames
 
-    def get_frame_batch_generator(self, frame_step: int, batch_size: int):
+    def get_frame_batch_generator(
+        self, frame_step: int, batch_size: int
+    ) -> Iterator[list[Image.Image]]:
         """
         Get a generator that yields batches of frames.
 
@@ -184,7 +189,7 @@ class VideoResource:
             batch_size (int): Number of frames to include in each batch.
 
         Yields:
-            List[Image.Image]: Batch of PIL Image objects.
+            list[Image.Image]: Batch of PIL Image objects.
         """
         with self as cap:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -222,7 +227,7 @@ class VideoProcessor:
     """
 
     @staticmethod
-    def get_metadata(video_path: Path) -> Dict[str, Any]:
+    def get_metadata(video_path: Path) -> dict[str, object]:
         """
         Extract metadata from a video file.
 
@@ -236,7 +241,7 @@ class VideoProcessor:
         return resource.get_metadata()
 
     @staticmethod
-    def get_frame_indices(frame_count: int, frame_step: int) -> List[int]:
+    def get_frame_indices(frame_count: int, frame_step: int) -> list[int]:
         """
         Generate frame indices based on frame count and step.
 
@@ -250,7 +255,7 @@ class VideoProcessor:
         return list(range(0, frame_count, frame_step))
 
     @staticmethod
-    def get_frames(video_path: Path, frame_indices: List[int]) -> List[Image.Image]:
+    def get_frames(video_path: Path, frame_indices: list[int]) -> list[Image.Image]:
         """
         Extract frames from a video at specified indices.
 
@@ -276,27 +281,27 @@ class VideoFileIterator:
 
     Attributes:
         input_path (Path): The path to the directory containing video files.
-        video_files (List[Path]): A list of video file paths found in the input directory.
+        video_files (list[Path]): A list of video file paths found in the input directory.
     """
 
-    def __init__(self, input_path: Path, ignore_files: Optional[List[str]] = None):
+    def __init__(self, input_path: Path, ignore_files: list[str] | None = None):
         """
         Initializes the VideoFileIterator with the specified input path.
 
         Args:
             input_path (Path): The path to the directory containing video files.
-            ignore_files (Optional[List[str]]): List of filenames to ignore.
+            ignore_files (Optional[list[str]]): List of filenames to ignore.
         """
         self.input_path = input_path
         self.ignore_files = ignore_files or []
         self.video_files = self._get_video_files()
 
-    def _get_video_files(self) -> List[Path]:
+    def _get_video_files(self) -> list[Path]:
         """
         Retrieves a list of video files from the input directory.
 
         Returns:
-            List[Path]: A list of paths to the video files found in the input directory.
+            list[Path]: A list of paths to the video files found in the input directory.
         """
         video_extensions = [".mp4", ".avi", ".mov"]
         video_files = [

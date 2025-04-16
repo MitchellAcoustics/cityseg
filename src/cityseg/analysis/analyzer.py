@@ -5,9 +5,10 @@ It includes methods to analyze segmentation maps, compute pixel counts and perce
 for each category, and generate statistics for the analysis results.
 """
 
+from __future__ import annotations
+
 import csv
 from pathlib import Path
-from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -35,16 +36,16 @@ class SegmentationAnalyzer:
     @staticmethod
     def analyze_segmentation_map(
         seg_map: np.ndarray, num_categories: int
-    ) -> Dict[int, Tuple[int, float]]:
+    ) -> dict[int, tuple[int, float]]:
         """
         Analyzes a segmentation map to compute pixel counts and percentages for each category.
 
         Args:
-            seg_map (np.ndarray): The segmentation map to analyze.
-            num_categories (int): The total number of categories in the segmentation.
+            seg_map: The segmentation map to analyze.
+            num_categories: The total number of categories in the segmentation.
 
         Returns:
-            Dict[int, Tuple[int, float]]: A dictionary where keys are category IDs and values
+            dict[int, tuple[int, float]]: A dictionary where keys are category IDs and values
             are tuples of (pixel count, percentage) for each category.
         """
         unique, counts = np.unique(seg_map, return_counts=True)
@@ -62,15 +63,12 @@ class SegmentationAnalyzer:
         """
         Analyzes an xarray Dataset containing segmentation data and saves results to Parquet.
 
-        This method is the modern replacement for analyze_results that works with xarray Datasets
-        directly and outputs to Parquet format.
-
         Args:
-            dataset (xr.Dataset): The xarray Dataset containing segmentation data.
-            output_path (Path): The base path where the output files will be saved.
+            dataset: The xarray Dataset containing segmentation data.
+            output_path: The base path where the output files will be saved.
 
         Returns:
-            Path: Path to the saved Parquet file.
+            Path to the saved Parquet file.
         """
         # Create a ParquetAnalysisStorage instance and use it to analyze the data
         storage = ParquetAnalysisStorage()
@@ -89,7 +87,7 @@ class SegmentationAnalyzer:
     @staticmethod
     def analyze_results_legacy(
         segmentation_data: np.ndarray | xr.DataArray,
-        metadata: Dict[str, Any],
+        metadata: dict[str, dict[str, str | int]],
         output_path: Path,
     ) -> None:
         """
@@ -102,8 +100,8 @@ class SegmentationAnalyzer:
 
         Args:
             segmentation_data: The segmentation data as numpy array or xarray DataArray.
-            metadata (Dict[str, Any]): Metadata containing label IDs and frame step.
-            output_path (Path): The path where the output CSV files will be saved.
+            metadata: Metadata containing label IDs and frame step.
+            output_path: The path where the output CSV files will be saved.
         """
         counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
         percentages_file = output_path.with_name(
@@ -187,12 +185,9 @@ class SegmentationAnalyzer:
         """
         Generates statistics for category counts or percentages.
 
-        This method reads the input CSV file, computes statistics (mean, median, std, min, max)
-        for each category, and saves the results to the specified output file.
-
         Args:
-            input_file (Path): Path to the input CSV file containing category data.
-            output_file (Path): Path to save the generated statistics.
+            input_file: Path to the input CSV file containing category data.
+            output_file: Path to save the generated statistics.
         """
         try:
             df = pd.read_csv(input_file)

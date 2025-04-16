@@ -6,15 +6,15 @@ ImageSegmentationPipeline to support various segmentation models and
 create detailed segmentation maps with associated metadata.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import warnings
-from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
 from loguru import logger
-from PIL.Image import Image
 from transformers import (
     AutoImageProcessor,
     AutoModelForSemanticSegmentation,
@@ -39,19 +39,19 @@ class SegmentationPipeline(ImageSegmentationPipeline):
     batch processing of images.
 
     Attributes:
-        palette (np.ndarray): The color palette used for visualization.
+        palette: The color palette used for visualization.
     """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.palette = self._get_palette()
 
-    def _get_palette(self) -> Optional[np.ndarray]:
+    def _get_palette(self) -> np.ndarray | None:
         """
         Get the color palette for the current model.
 
         Returns:
-            Optional[np.ndarray]: The color palette as a numpy array, or None if not available.
+            The color palette as a numpy array, or None if not available.
         """
         if hasattr(self.model.config, "palette"):
             return np.array(self.model.config.palette, dtype=np.uint8)
@@ -65,22 +65,22 @@ class SegmentationPipeline(ImageSegmentationPipeline):
         return None
 
     def create_single_segmentation_map(
-        self, annotations: List[Dict[str, Any]], target_size: tuple
-    ) -> Dict[str, Any]:
+        self, annotations: list[dict[str, object]], target_size: tuple
+    ) -> dict[str, object]:
         """
         Create a single segmentation map from annotations.
 
         Args:
-            annotations (List[Dict[str, Any]]): List of annotation dictionaries.
-            target_size (tuple): The target size of the segmentation map.
+            annotations: List of annotation dictionaries.
+            target_size: The target size of the segmentation map.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the segmentation map and associated metadata.
+            A dictionary containing the segmentation map and associated metadata.
         """
         seg_map = np.zeros(target_size, dtype=np.int32)
         for annotation in annotations:
             mask = np.array(annotation["mask"])
-            label_id = self.model.config.label2id[annotation["label"]]
+            label_id = self.model.config.label2id[str(annotation["label"])]
             seg_map[mask != 0] = label_id
 
         return {
@@ -92,16 +92,16 @@ class SegmentationPipeline(ImageSegmentationPipeline):
 
     @staticmethod
     def _is_single_image_result(
-        result: Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]],
+        result: list[dict[str, object]] | list[list[dict[str, object]]],
     ) -> bool:
         """
         Determine if the result is for a single image or multiple images.
 
         Args:
-            result (Union[List[Dict[str, Any]], List[List[Dict[str, Any]]]]): The result to check.
+            result: The result to check.
 
         Returns:
-            bool: True if the result is for a single image, False otherwise.
+            True if the result is for a single image, False otherwise.
 
         Raises:
             ValueError: If the result structure is unexpected.
@@ -119,18 +119,16 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             return False
         raise ValueError("Unexpected result structure")
 
-    def __call__(
-        self, images: Union[Image, List[Image]], **kwargs: Any
-    ) -> List[Dict[str, Any]]:
+    def __call__(self, images, **kwargs) -> list[dict[str, object]]:  # type: ignore
         """
         Process the input image(s) and create segmentation map(s).
 
         Args:
-            images (Union[Image, List[Image]]): The input image(s) to process.
+            images: The input image(s) to process.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            List[Dict[str, Any]]: A list of dictionaries containing segmentation maps and metadata.
+            A list of dictionaries containing segmentation maps and metadata.
         """
         result = super().__call__(images, subtask="semantic", **kwargs)
         if self._is_single_image_result(result):
@@ -150,7 +148,7 @@ class SegmentationPipeline(ImageSegmentationPipeline):
 
 @logger.catch
 def create_segmentation_pipeline(
-    config: ModelConfig, **kwargs: Any
+    config: ModelConfig, **kwargs: object
 ) -> SegmentationPipeline:
     """
     Create and return a SegmentationPipeline instance based on the specified model.
@@ -163,7 +161,7 @@ def create_segmentation_pipeline(
         **kwargs: Additional keyword arguments to pass to the SegmentationPipeline constructor.
 
     Returns:
-        SegmentationPipeline: An instance of the SegmentationPipeline class.
+        An instance of the SegmentationPipeline class.
     """
     model_name = config.name
     model_type = config.model_type
@@ -178,6 +176,9 @@ def create_segmentation_pipeline(
             if torch.backends.mps.is_available()
             else "cpu"
         )
+
+    model = None
+    image_processor = None
 
     # Initialize the appropriate model and image processor based on the model name
     if "oneformer" == model_type:
@@ -225,6 +226,9 @@ def create_segmentation_pipeline(
     else:
         model = AutoModelForSemanticSegmentation.from_pretrained(model_name)
         image_processor = AutoImageProcessor.from_pretrained(model_name)
+
+    if model is None or image_processor is None:
+        raise RuntimeError("Failed to load model or image processor.")
 
     return SegmentationPipeline(
         model=model,

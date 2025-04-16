@@ -1,5 +1,6 @@
-from typing import Generator
+from __future__ import annotations
 from unittest.mock import patch
+from collections.abc import Generator
 
 import numpy as np
 import pytest

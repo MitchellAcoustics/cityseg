@@ -4,7 +4,7 @@ This directory contains demo scripts and notebooks that showcase how to use City
 
 ## Available Demos
 
-- `component_demo.py` - Demonstrates the component-based architecture introduced in CitySeg 0.4.0
+- `component_demo.ipynb` - Demonstrates the component-based architecture introduced in CitySeg 0.4.0
 
 ## Example Inputs
 
@@ -19,14 +19,14 @@ The Python scripts can be run directly:
 
 ```bash
 cd docs/demos
-python component_demo.py
+python component_demo.ipynb
 ```
 
 Or converted to Jupyter notebooks using [jupytext](https://github.com/mwouts/jupytext):
 
 ```bash
 pip install jupytext
-jupytext --to notebook component_demo.py
+jupytext --to notebook component_demo.ipynb
 jupyter notebook component_demo.ipynb
 ```
 

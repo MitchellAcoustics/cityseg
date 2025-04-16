@@ -4,8 +4,9 @@ This module provides functionality for processing image files.
 It encapsulates methods for loading, preprocessing, and saving images for segmentation.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 from PIL import Image
@@ -47,7 +48,7 @@ class ImageProcessor:
             raise
 
     @staticmethod
-    def resize_image(image: Image.Image, max_size: Optional[int] = None) -> Image.Image:
+    def resize_image(image: Image.Image, max_size: int | None = None) -> Image.Image:
         """
         Resize an image to a maximum dimension while preserving aspect ratio.
 
@@ -71,9 +72,9 @@ class ImageProcessor:
 
     @staticmethod
     def save_image(
-        image: Union[Image.Image, np.ndarray],
+        image: Image.Image | np.ndarray,
         output_path: Path,
-        format: Optional[str] = None,
+        format: str | None = None,
     ) -> Path:
         """
         Save an image to a file.

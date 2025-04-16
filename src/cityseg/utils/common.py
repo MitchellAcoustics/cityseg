@@ -5,9 +5,10 @@ It includes functions for handling segmentation data, color palettes,
 progress tracking, and logging setup.
 """
 
+from __future__ import annotations
+
 import sys
 from contextlib import contextmanager
-from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
@@ -19,13 +20,13 @@ from tqdm.auto import tqdm
 
 
 def get_segmentation_batch(
-    segmentation_data: Union[np.ndarray, xr.DataArray], start: int, end: int
+    segmentation_data: np.ndarray | xr.DataArray, start: int, end: int
 ) -> np.ndarray:
     """
     Get a batch of segmentation data from an array or xarray DataArray.
 
     Args:
-        segmentation_data: The segmentation data, either as numpy array or xarray DataArray.
+        segmentation_data (np.ndarray | xr.DataArray): The segmentation data, either as numpy array or xarray DataArray.
         start (int): Start index of the batch.
         end (int): End index of the batch.
 
@@ -41,7 +42,7 @@ def get_segmentation_batch(
 # ---- Color Palette Functions ----
 
 # Cityscapes color palette
-CITYSCAPES_PALETTE: List[Tuple[int, int, int]] = [
+CITYSCAPES_PALETTE: list[tuple[int, int, int]] = [
     (128, 64, 128),  # road
     (244, 35, 232),  # sidewalk
     (70, 70, 70),  # building
@@ -65,7 +66,7 @@ CITYSCAPES_PALETTE: List[Tuple[int, int, int]] = [
 ]
 
 # First 20 colors of ADE20K palette (full palette imported only when needed)
-ADE20K_PALETTE_SUBSET: List[Tuple[int, int, int]] = [
+ADE20K_PALETTE_SUBSET: list[tuple[int, int, int]] = [
     (120, 120, 120),  # wall
     (180, 120, 120),  # building
     (6, 230, 230),  # sky
@@ -89,7 +90,7 @@ ADE20K_PALETTE_SUBSET: List[Tuple[int, int, int]] = [
 ]
 
 # First 20 colors of Mapillary Vistas palette (full palette imported only when needed)
-MAPILLARY_VISTAS_PALETTE_SUBSET: List[Tuple[int, int, int]] = [
+MAPILLARY_VISTAS_PALETTE_SUBSET: list[tuple[int, int, int]] = [
     (165, 42, 42),  # Bird
     (0, 192, 0),  # Ground Animal
     (196, 196, 196),  # Curb
@@ -113,16 +114,16 @@ MAPILLARY_VISTAS_PALETTE_SUBSET: List[Tuple[int, int, int]] = [
 ]
 
 
-def get_palette(name_or_path: Optional[str] = None) -> List[Tuple[int, int, int]]:
+def get_palette(name_or_path: str | None = None) -> list[tuple[int, int, int]]:
     """
     Get a color palette by name or model path.
 
     Args:
-        name_or_path: Name of the palette or model path. If None, returns ADE20K palette.
+        name_or_path (str | None): Name of the palette or model path. If None, returns ADE20K palette.
             Options: "cityscapes", "ade20k", "mapillary", "default", or a model path.
 
     Returns:
-        List of RGB tuples representing the color palette.
+        list[tuple[int, int, int]]: List of RGB tuples representing the color palette.
     """
     # Handle direct palette names
     if name_or_path == "cityscapes" or (name_or_path and "cityscapes" in name_or_path):
@@ -153,7 +154,7 @@ def get_palette(name_or_path: Optional[str] = None) -> List[Tuple[int, int, int]
 
 
 @contextmanager
-def tqdm_context(*args: Any, **kwargs: Any) -> Iterator[tqdm]:
+def tqdm_context(*args: object, **kwargs: object) -> tqdm:
     """
     A context manager for tqdm progress bars.
 
@@ -161,8 +162,8 @@ def tqdm_context(*args: Any, **kwargs: Any) -> Iterator[tqdm]:
     initialized and closed, even if an exception occurs.
 
     Args:
-        *args: Positional arguments to pass to tqdm.
-        **kwargs: Keyword arguments to pass to tqdm.
+        *args (object): Positional arguments to pass to tqdm.
+        **kwargs (object): Keyword arguments to pass to tqdm.
 
     Yields:
         tqdm: The tqdm progress bar object.

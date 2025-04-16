@@ -9,8 +9,9 @@ It includes:
 5. StorageFactory for creating storage adapters
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, Any, Tuple, List, Union, Optional
 
 import cv2
 import numpy as np
@@ -30,14 +31,17 @@ class SegmentationStorage:
     """
 
     def save_segmentation_data(
-        self, data, metadata: Dict[str, Any], output_path: Path
+        self,
+        data: np.ndarray | xr.DataArray | xr.Dataset,
+        metadata: dict[str, object],
+        output_path: Path,
     ) -> Path:
         """
         Save segmentation data and metadata to storage.
 
         Args:
             data: Segmentation data.
-            metadata (Dict[str, Any]): Metadata about the segmentation.
+            metadata (dict[str, object]): Metadata about the segmentation.
             output_path (Path): Path to save the data.
 
         Returns:
@@ -45,7 +49,9 @@ class SegmentationStorage:
         """
         raise NotImplementedError("Subclasses must implement save_segmentation_data")
 
-    def load_segmentation_data(self, input_path: Path) -> Tuple[Any, Dict[str, Any]]:
+    def load_segmentation_data(
+        self, input_path: Path
+    ) -> tuple[xr.Dataset, dict[str, object]]:
         """
         Load segmentation data and metadata from storage.
 
@@ -53,11 +59,13 @@ class SegmentationStorage:
             input_path (Path): Path to the saved data.
 
         Returns:
-            Tuple[Any, Dict[str, Any]]: Tuple of segmentation data and metadata.
+            tuple[xr.Dataset, dict[str, object]]: Tuple of segmentation data and metadata.
         """
         raise NotImplementedError("Subclasses must implement load_segmentation_data")
 
-    def load_segmentation_batch(self, input_path: Path, start: int, end: int) -> Any:
+    def load_segmentation_batch(
+        self, input_path: Path, start: int, end: int
+    ) -> xr.Dataset:
         """
         Load a batch of segmentation data.
 
@@ -67,7 +75,7 @@ class SegmentationStorage:
             end (int): End index of the batch.
 
         Returns:
-            Any: Batch of segmentation data.
+            xr.Dataset: Batch of segmentation data.
         """
         raise NotImplementedError("Subclasses must implement load_segmentation_batch")
 
@@ -81,14 +89,17 @@ class ZarrSegmentationStorage(SegmentationStorage):
     """
 
     def save_segmentation_data(
-        self, data, metadata: Dict[str, Any], output_path: Path
+        self,
+        data: np.ndarray | xr.DataArray | xr.Dataset,
+        metadata: dict[str, object],
+        output_path: Path,
     ) -> Path:
         """
         Save segmentation data and metadata to Zarr storage.
 
         Args:
             data: Segmentation data as numpy array or xarray DataArray/Dataset.
-            metadata (Dict[str, Any]): Metadata about the segmentation.
+            metadata (dict[str, object]): Metadata about the segmentation.
             output_path (Path): Path to save the data.
 
         Returns:
@@ -152,7 +163,7 @@ class ZarrSegmentationStorage(SegmentationStorage):
 
     def load_segmentation_data(
         self, input_path: Path
-    ) -> Tuple[xr.Dataset, Dict[str, Any]]:
+    ) -> tuple[xr.Dataset, dict[str, object]]:
         """
         Load segmentation data and metadata from Zarr storage.
 
@@ -160,7 +171,7 @@ class ZarrSegmentationStorage(SegmentationStorage):
             input_path (Path): Path to the Zarr store.
 
         Returns:
-            Tuple[xr.Dataset, Dict[str, Any]]: Tuple of segmentation dataset and metadata.
+            tuple[xr.Dataset, dict[str, object]]: Tuple of segmentation dataset and metadata.
         """
         # Ensure input path has .zarr extension
         zarr_path = input_path.with_suffix(".zarr")
@@ -209,19 +220,19 @@ class ParquetAnalysisStorage:
 
     def save_category_analysis(
         self,
-        counts: Dict[int, int],
-        percentages: Dict[int, float],
+        counts: dict[int, int],
+        percentages: dict[int, float],
         output_path: Path,
-        frame_idx: Optional[int] = None,
+        frame_idx: int | None = None,
     ) -> Path:
         """
         Save category counts and percentages to Parquet storage.
 
         Args:
-            counts (Dict[int, int]): Dictionary mapping category IDs to pixel counts.
-            percentages (Dict[int, float]): Dictionary mapping category IDs to percentages.
+            counts (dict[int, int]): Dictionary mapping category IDs to pixel counts.
+            percentages (dict[int, float]): Dictionary mapping category IDs to percentages.
             output_path (Path): Path to save the data.
-            frame_idx (Optional[int]): Frame index, for video analysis.
+            frame_idx (int, optional): Frame index, for video analysis.
 
         Returns:
             Path: Path to the saved Parquet file.
@@ -251,8 +262,8 @@ class ParquetAnalysisStorage:
 
     def save_video_analysis(
         self,
-        segmentation_data: Union[np.ndarray, xr.DataArray, xr.Dataset],
-        metadata: Dict[str, Any],
+        segmentation_data: np.ndarray | xr.DataArray | xr.Dataset,
+        metadata: dict[str, object],
         output_path: Path,
     ) -> Path:
         """
@@ -260,7 +271,7 @@ class ParquetAnalysisStorage:
 
         Args:
             segmentation_data: Segmentation data.
-            metadata (Dict[str, Any]): Metadata about the segmentation.
+            metadata (dict[str, object]): Metadata about the segmentation.
             output_path (Path): Path to save the data.
 
         Returns:
@@ -312,7 +323,9 @@ class ParquetAnalysisStorage:
         logger.info(f"Saved video analysis to {parquet_path}")
         return parquet_path
 
-    def _analyze_frame(self, frame: np.ndarray, frame_idx: int) -> List[Dict[str, Any]]:
+    def _analyze_frame(
+        self, frame: np.ndarray, frame_idx: int
+    ) -> list[dict[str, object]]:
         """
         Analyze a single frame and return statistics.
 
@@ -321,7 +334,7 @@ class ParquetAnalysisStorage:
             frame_idx (int): Frame index.
 
         Returns:
-            List[Dict[str, Any]]: List of statistics dictionaries.
+            list[dict[str, object]]: List of statistics dictionaries.
         """
         # Count pixels per category
         unique_values, counts = np.unique(frame, return_counts=True)

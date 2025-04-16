@@ -5,12 +5,13 @@ It includes classes for input type enumeration, model configuration, visualizati
 and the main configuration class that encapsulates all settings for the segmentation process.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
 
 import yaml
 from loguru import logger
@@ -30,26 +31,26 @@ class ModelConfig:
     Configuration class for the segmentation model.
 
     Attributes:
-        name (str): The name or path of the pre-trained model to use.
-        model_type (Optional[str]): The type of the model (e.g., 'oneformer', 'mask2former').
-        max_size (Optional[int]): The maximum size for input image resizing.
-        device (Optional[str]): The device to use for processing (e.g., 'cpu', 'cuda').
+        name: The name or path of the pre-trained model to use.
+        model_type: The type of the model (e.g., 'oneformer', 'mask2former').
+        max_size: The maximum size for input image resizing.
+        device: The device to use for processing (e.g., 'cpu', 'cuda').
     """
 
     name: str
-    model_type: Optional[str] = None
-    max_size: Optional[int] = None
-    device: Optional[str] = None
-    dataset: Optional[str] = None
-    num_workers: Optional[int] = 8
-    pipe_batch: Optional[int] = 1
+    model_type: str | None = None
+    max_size: int | None = None
+    device: str | None = None
+    dataset: str | None = None
+    num_workers: int | None = 8
+    pipe_batch: int | None = 1
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """
         Convert the ModelConfig to a dictionary.
 
         Returns:
-            Dict[str, Any]: Dictionary representation of the ModelConfig.
+            dict[str, object]: Dictionary representation of the ModelConfig.
         """
         return {
             "name": self.name,
@@ -66,7 +67,8 @@ class ModelConfig:
         Post-initialization method to set up the model type if not provided.
         """
         self.auto_detect_model_type()
-        if self.device == "mps" and self.num_workers > 0 or self.num_workers is None:
+        # Fix: Only compare num_workers if not None
+        if self.device == "mps" and (self.num_workers is None or self.num_workers > 0):
             logger.warning(
                 "MPS is not compatible with multiple workers in pytorch. Setting num_workers to 0."
             )
@@ -101,8 +103,8 @@ class VisualizationConfig:
     Configuration class for visualization settings.
 
     Attributes:
-        alpha (float): The alpha value for blending the segmentation mask with the original image.
-        colormap (str): The colormap to use for visualizing the segmentation mask.
+        alpha: The alpha value for blending the segmentation mask with the original image.
+        colormap: The colormap to use for visualizing the segmentation mask.
     """
 
     alpha: float = 0.5
@@ -119,30 +121,30 @@ class Config:
     and visualization settings.
 
     Attributes:
-        input (Union[Path, str]): The input path (file or directory) for processing.
-        output_dir (Optional[Path]): The output directory for saving results.
-        output_prefix (Optional[str]): The prefix for output file names.
-        model (ModelConfig): The model configuration.
-        frame_step (int): The frame step for video processing.
-        batch_size (int): The batch size for processing.
-        output_fps (Optional[float]): The output FPS for processed videos.
-        save_raw_segmentation (bool): Whether to save raw segmentation maps.
-        save_colored_segmentation (bool): Whether to save colored segmentation maps.
-        save_overlay (bool): Whether to save overlay visualizations.
-        visualization (VisualizationConfig): The visualization configuration.
-        input_type (InputType): The type of input (automatically determined).
-        force_reprocess (bool): Whether to force reprocessing of existing results.
-        disable_tqdm (bool): Whether to disable the progress bar display.
+        input: The input path (file or directory) for processing.
+        output_dir: The output directory for saving results.
+        output_prefix: The prefix for output file names.
+        model: The model configuration.
+        frame_step: The frame step for video processing.
+        batch_size: The batch size for processing.
+        output_fps: The output FPS for processed videos.
+        save_raw_segmentation: Whether to save raw segmentation maps.
+        save_colored_segmentation: Whether to save colored segmentation maps.
+        save_overlay: Whether to save overlay visualizations.
+        visualization: The visualization configuration.
+        input_type: The type of input (automatically determined).
+        force_reprocess: Whether to force reprocessing of existing results.
+        disable_tqdm: Whether to disable the progress bar display.
     """
 
-    input: Union[Path, str]
-    output_dir: Optional[Path]
-    output_prefix: Optional[str]
+    input: Path | str
+    output_dir: Path | None
+    output_prefix: str | None
     model: ModelConfig
-    ignore_files: Optional[List[str]] = None
+    ignore_files: list[str] | None = None
     frame_step: int = 1
     batch_size: int = 16
-    output_fps: Optional[float] = None
+    output_fps: float | None = None
     save_raw_segmentation: bool = True
     save_colored_segmentation: bool = False
     save_overlay: bool = True
@@ -159,7 +161,9 @@ class Config:
         Raises:
             ValueError: If the input path does not exist.
         """
-        self.input = Path(self.input)
+        # Always convert input to Path
+        if not isinstance(self.input, Path):
+            self.input = Path(self.input)
         if not self.input.exists():
             raise ValueError(f"Input path does not exist: {self.input}")
         self.input_type = self._determine_input_type()
@@ -242,12 +246,12 @@ class Config:
             return self.output_dir / f"{prefix}.mp4"
 
     @classmethod
-    def from_yaml(cls, config_path: Path) -> "Config":
+    def from_yaml(cls, config_path: Path) -> Config:
         """
         Create a Config instance from a YAML file.
 
         Args:
-            config_path (Path): Path to the YAML configuration file.
+            config_path: Path to the YAML configuration file.
 
         Returns:
             Config: An instance of the Config class.
@@ -284,12 +288,12 @@ class Config:
             disable_tqdm=config_dict.get("disable_tqdm", False),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """
         Convert the Config instance to a dictionary.
 
         Returns:
-            Dict[str, Any]: A dictionary representation of the Config instance.
+            dict[str, object]: A dictionary representation of the Config instance.
         """
         return {
             "input": str(self.input),
@@ -317,7 +321,7 @@ class ConfigHasher:
     """
 
     @staticmethod
-    def get_relevant_config(config: Config) -> Dict[str, Any]:
+    def get_relevant_config(config: Config) -> dict[str, object]:
         """
         Extract the relevant configuration settings for hashing.
 
@@ -326,10 +330,10 @@ class ConfigHasher:
         require reprocessing if changed.
 
         Args:
-            config (Config): The full configuration object.
+            config: The full configuration object.
 
         Returns:
-            Dict[str, Any]: A dictionary of relevant configuration settings.
+            dict[str, object]: A dictionary of relevant configuration settings.
         """
         return {
             "model": {
@@ -353,7 +357,7 @@ class ConfigHasher:
         that affect the analysis results or output format.
 
         Args:
-            config (Config): The full configuration object.
+            config: The full configuration object.
 
         Returns:
             str: A hexadecimal string representing the hash of the relevant config.
