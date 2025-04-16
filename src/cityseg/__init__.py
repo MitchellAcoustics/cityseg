@@ -27,7 +27,7 @@ from .exceptions import ConfigurationError, InputError, ModelError, ProcessingEr
 from .file_handler import FileHandler
 from .pipeline import SegmentationPipeline, create_segmentation_pipeline
 from .processing_plan import ProcessingPlan
-from .processors import DirectoryProcessor, SegmentationProcessor, create_processor
+from .processors import DirectoryProcessorLegacy as DirectoryProcessor, SegmentationProcessorWrapper as SegmentationProcessor, create_processor
 from .segmentation_analyzer import SegmentationAnalyzer
 from .storage_adapter import (
     ZarrSegmentationStorage,

@@ -13,11 +13,14 @@ import numpy as np
 import xarray as xr
 from PIL import Image
 from loguru import logger
+from hamilton import function_modifiers as fm
 
 from .config import ModelConfig, Config
 from .pipeline import create_segmentation_pipeline
-from .video_resource import VideoResource
-from .storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage
+from .video_processor import VideoProcessor
+from .image_processor import ImageProcessor
+from .segmentation_processor import SegmentationProcessor
+from .dataset_builder import DatasetBuilder
 from .segmentation_analyzer import SegmentationAnalyzer
 from .visualization_handler import VisualizationHandler
 
@@ -34,13 +37,57 @@ def video_metadata(video_path: str) -> Dict[str, Any]:
     Returns:
         Metadata about the video including dimensions, frame count, and fps
     """
-    with VideoResource(Path(video_path)) as resource:
-        return resource.get_metadata()
+    return VideoProcessor.get_metadata(Path(video_path))
 
 
-def frame_indices(frame_count: int, frame_step: int) -> List[int]:
+@fm.config.when(source="video_metadata")
+def frame_count(video_metadata: Dict[str, Any]) -> int:
     """
-    Frame indices to extract from video based on frame step.
+    Number of frames in the video.
+    
+    Args:
+        video_metadata: Metadata dictionary from the video
+        
+    Returns:
+        Total number of frames in the video
+    """
+    return video_metadata["frame_count"]
+
+
+@fm.config.when(source="video_metadata")
+def fps(video_metadata: Dict[str, Any]) -> float:
+    """
+    Frames per second of the video.
+    
+    Args:
+        video_metadata: Metadata dictionary from the video
+        
+    Returns:
+        Video frame rate in frames per second
+    """
+    return video_metadata["fps"]
+
+
+@fm.config.when(source="video_metadata")
+def video_dimensions(video_metadata: Dict[str, Any]) -> Dict[str, int]:
+    """
+    Dimensions of the video frames.
+    
+    Args:
+        video_metadata: Metadata dictionary from the video
+        
+    Returns:
+        Dictionary with width and height of the video
+    """
+    return {
+        "width": video_metadata["width"], 
+        "height": video_metadata["height"]
+    }
+
+
+def video_frame_indices(frame_count: int, frame_step: int) -> List[int]:
+    """
+    Frame indices to extract based on frame step.
     
     Args:
         frame_count: Total number of frames in the video
@@ -49,9 +96,10 @@ def frame_indices(frame_count: int, frame_step: int) -> List[int]:
     Returns:
         List of frame indices to extract
     """
-    return list(range(0, frame_count, frame_step))
+    return VideoProcessor.get_frame_indices(frame_count, frame_step)
 
 
+@fm.config.when(transform=fm.parametrized)
 def video_frames(video_path: str, frame_indices: List[int]) -> List[Image.Image]:
     """
     Video frames extracted at the specified indices.
@@ -63,193 +111,12 @@ def video_frames(video_path: str, frame_indices: List[int]) -> List[Image.Image]
     Returns:
         List of PIL Image objects corresponding to the requested frames
     """
-    with VideoResource(Path(video_path)) as resource:
-        return resource.get_frame_batch(frame_indices)
-
-
-def segmentation_pipeline(model_config: Dict[str, Any]) -> Any:
-    """
-    Segmentation pipeline initialized with model configuration.
-    
-    Args:
-        model_config: Dictionary containing model configuration parameters
-        
-    Returns:
-        Initialized segmentation pipeline ready for inference
-    """
-    config = ModelConfig(
-        name=model_config["name"],
-        model_type=model_config.get("model_type"),
-        max_size=model_config.get("max_size"),
-        device=model_config.get("device"),
-        num_workers=model_config.get("num_workers", 1)
-    )
-    return create_segmentation_pipeline(config)
-
-
-def segmentation_results(frames: List[Image.Image], pipeline: Any) -> List[Dict[str, Any]]:
-    """
-    Segmentation results for the input frames.
-    
-    Args:
-        frames: List of frames to segment
-        pipeline: Segmentation pipeline to use
-        
-    Returns:
-        List of segmentation results for each frame
-    """
-    return pipeline(frames)
-
-
-def segmentation_maps(results: List[Dict[str, Any]]) -> List[np.ndarray]:
-    """
-    Segmentation maps extracted from segmentation results.
-    
-    Args:
-        results: List of segmentation results from the pipeline
-        
-    Returns:
-        List of segmentation maps as numpy arrays
-    """
-    return [result["seg_map"] for result in results]
-
-
-def segmentation_metadata(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Metadata from segmentation results including labels and palette.
-    
-    Args:
-        results: List of segmentation results from the pipeline
-        
-    Returns:
-        Dictionary containing label mappings and color palette
-    """
-    if not results:
-        return {}
-    
-    result = results[0]
-    return {
-        "label2id": result.get("label2id", {}),
-        "id2label": result.get("id2label", {}),
-        "palette": result.get("palette", None)
-    }
-
-
-def segmentation_dataset(
-    segmentation_maps: List[np.ndarray],
-    video_metadata: Dict[str, Any],
-    frame_indices: List[int],
-    model_metadata: Dict[str, Any],
-    segmentation_metadata: Dict[str, Any]
-) -> xr.Dataset:
-    """
-    Xarray dataset containing segmentation results and metadata.
-    
-    Args:
-        segmentation_maps: List of segmentation maps
-        video_metadata: Metadata about the source video
-        frame_indices: Indices of frames that were processed
-        model_metadata: Information about the model used
-        segmentation_metadata: Additional metadata from segmentation
-        
-    Returns:
-        Xarray dataset with segmentation data and metadata
-    """
-    # Stack segmentation maps into a 3D array
-    segmentation_array = np.stack(segmentation_maps)
-    
-    # Create time coordinates based on frame indices and fps
-    time_coords = np.array(frame_indices) / video_metadata['fps'] if frame_indices else np.array([])
-    
-    # Create xarray DataArray with named dimensions
-    segmentation_data = xr.DataArray(
-        segmentation_array,
-        dims=["time", "y", "x"],
-        coords={
-            "time": time_coords,
-            "y": np.arange(video_metadata['height']),
-            "x": np.arange(video_metadata['width'])
-        }
-    )
-    
-    # Combine all metadata
-    attrs = {
-        "model_name": model_metadata.get("name", ""),
-        "model_type": model_metadata.get("model_type", ""),
-        "fps": video_metadata['fps'],
-        "frame_step": video_metadata.get('frame_step', 1),
-        "original_width": video_metadata['width'],
-        "original_height": video_metadata['height'],
-        "codec": video_metadata.get('codec', None)
-    }
-    
-    # Add segmentation metadata if available
-    if segmentation_metadata:
-        palette = segmentation_metadata.get('palette')
-        if palette is not None:
-            # Convert numpy array to list for serialization if needed
-            attrs['palette'] = palette.tolist() if isinstance(palette, np.ndarray) else palette
-            
-        if 'id2label' in segmentation_metadata:
-            attrs['id2label'] = segmentation_metadata['id2label']
-    
-    # Create the dataset
-    dataset = xr.Dataset(
-        data_vars={"segmentation": segmentation_data},
-        attrs=attrs
-    )
-    
-    return dataset
-
-
-def saved_segmentation_path(
-    dataset: xr.Dataset, 
-    output_path: Union[str, Path]
-) -> Path:
-    """
-    Path to the saved segmentation dataset.
-    
-    Args:
-        dataset: Xarray dataset to save
-        output_path: Base path for output files
-        
-    Returns:
-        Path to the saved Zarr dataset
-    """
-    storage = ZarrSegmentationStorage()
-    path = Path(output_path) if isinstance(output_path, str) else output_path
-    return storage.save_segmentation_data(
-        dataset,
-        dict(dataset.attrs),
-        path.with_name(f"{path.stem}_segmentation")
-    )
-
-
-def saved_analysis_path(
-    dataset: xr.Dataset, 
-    output_path: Union[str, Path]
-) -> Path:
-    """
-    Path to the saved analysis data.
-    
-    Args:
-        dataset: Xarray dataset to analyze
-        output_path: Base path for output files
-        
-    Returns:
-        Path to the saved analysis file
-    """
-    storage = ParquetAnalysisStorage()
-    path = Path(output_path) if isinstance(output_path, str) else output_path
-    return storage.save_video_analysis(
-        dataset,
-        dict(dataset.attrs),
-        path.with_name(f"{path.stem}_analysis")
-    )
+    return VideoProcessor.get_frames(Path(video_path), frame_indices)
 
 
 # --- Image Processing Functions ---
 
+@fm.config.when(transform=fm.parametrized)
 def image_data(image_path: str, max_size: Optional[int] = None) -> Image.Image:
     """
     Image loaded from path, optionally resized.
@@ -261,137 +128,410 @@ def image_data(image_path: str, max_size: Optional[int] = None) -> Image.Image:
     Returns:
         Loaded PIL Image
     """
-    image = Image.open(Path(image_path)).convert("RGB")
-    
+    image = ImageProcessor.load_image(Path(image_path))
     if max_size:
-        image.thumbnail((max_size, max_size))
-        
+        image = ImageProcessor.resize_image(image, max_size)
     return image
 
 
-def image_segmentation_result(image: Image.Image, pipeline: Any) -> Dict[str, Any]:
+# --- Segmentation Functions ---
+
+@fm.config.when_in(["model_name", "model_type", "model_device", "model_max_size", "model_num_workers"])
+def pipeline(
+    model_name: str,
+    model_type: Optional[str] = None,
+    model_device: Optional[str] = None,
+    model_max_size: Optional[int] = None,
+    model_num_workers: Optional[int] = None
+) -> Any:
+    """
+    Segmentation pipeline ready for inference.
+    
+    Args:
+        model_name: Name of the model to use
+        model_type: Type of the model (e.g., "segformer")
+        model_device: Device to run the model on (e.g., "cuda", "cpu")
+        model_max_size: Maximum size for image processing
+        model_num_workers: Number of workers for processing
+        
+    Returns:
+        Configured segmentation pipeline
+    """
+    config = ModelConfig(
+        name=model_name,
+        model_type=model_type,
+        device=model_device,
+        max_size=model_max_size,
+        num_workers=model_num_workers
+    )
+    return SegmentationProcessor.create_pipeline(config)
+
+
+def batch_segmentation_results(video_frames: List[Image.Image], pipeline: Any) -> List[Dict[str, Any]]:
+    """
+    Segmentation results for a batch of video frames.
+    
+    Args:
+        video_frames: List of frames to process
+        pipeline: Segmentation pipeline
+        
+    Returns:
+        List of segmentation results
+    """
+    return SegmentationProcessor.process_batch(video_frames, pipeline)
+
+
+def image_segmentation_result(image_data: Image.Image, pipeline: Any) -> Dict[str, Any]:
     """
     Segmentation result for a single image.
     
     Args:
-        image: PIL Image to segment
-        pipeline: Segmentation pipeline to use
+        image_data: Image to process
+        pipeline: Segmentation pipeline
         
     Returns:
-        Dictionary containing segmentation result
+        Segmentation result dictionary
     """
-    return pipeline([image])[0]
+    return SegmentationProcessor.process_image(image_data, pipeline)
 
+
+def segmentation_maps(batch_segmentation_results: List[Dict[str, Any]]) -> List[np.ndarray]:
+    """
+    Segmentation maps extracted from results.
+    
+    Args:
+        batch_segmentation_results: Segmentation results from pipeline
+        
+    Returns:
+        List of segmentation maps as numpy arrays
+    """
+    return SegmentationProcessor.extract_segmentation_maps(batch_segmentation_results)
+
+
+def segmentation_map(image_segmentation_result: Dict[str, Any]) -> np.ndarray:
+    """
+    Single segmentation map from an image result.
+    
+    Args:
+        image_segmentation_result: Segmentation result for a single image
+        
+    Returns:
+        Segmentation map as a numpy array
+    """
+    return image_segmentation_result["seg_map"]
+
+
+def segmentation_metadata(batch_segmentation_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Metadata extracted from segmentation results.
+    
+    Args:
+        batch_segmentation_results: Segmentation results from pipeline
+        
+    Returns:
+        Dictionary with label mappings and palette
+    """
+    return SegmentationProcessor.extract_metadata(batch_segmentation_results)
+
+
+def single_segmentation_metadata(image_segmentation_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Metadata extracted from a single segmentation result.
+    
+    Args:
+        image_segmentation_result: Segmentation result for a single image
+        
+    Returns:
+        Dictionary with label mappings and palette
+    """
+    return {
+        "label2id": image_segmentation_result.get("label2id", {}),
+        "id2label": image_segmentation_result.get("id2label", {}),
+        "palette": image_segmentation_result.get("palette", None)
+    }
+
+
+# --- Dataset Functions ---
+
+def video_segmentation_dataset(
+    segmentation_maps: List[np.ndarray],
+    video_metadata: Dict[str, Any],
+    video_frame_indices: List[int],
+    model_metadata: Dict[str, Any],
+    segmentation_metadata: Dict[str, Any]
+) -> xr.Dataset:
+    """
+    Dataset containing video segmentation results.
+    
+    Args:
+        segmentation_maps: List of segmentation maps
+        video_metadata: Video metadata dictionary
+        video_frame_indices: Indices of processed frames
+        model_metadata: Model metadata
+        segmentation_metadata: Segmentation metadata
+        
+    Returns:
+        xarray Dataset with segmentation data and metadata
+    """
+    return DatasetBuilder.create_video_dataset(
+        segmentation_maps,
+        video_metadata,
+        video_frame_indices,
+        model_metadata,
+        segmentation_metadata
+    )
+
+
+def image_segmentation_dataset(
+    segmentation_map: np.ndarray,
+    model_metadata: Dict[str, Any],
+    single_segmentation_metadata: Dict[str, Any]
+) -> xr.Dataset:
+    """
+    Dataset containing single image segmentation result.
+    
+    Args:
+        segmentation_map: Segmentation map for the image
+        model_metadata: Model metadata
+        single_segmentation_metadata: Segmentation metadata
+        
+    Returns:
+        xarray Dataset with segmentation data and metadata
+    """
+    return DatasetBuilder.create_image_dataset(
+        segmentation_map,
+        model_metadata,
+        single_segmentation_metadata
+    )
+
+
+# --- Storage Functions ---
+
+def saved_segmentation_path(
+    video_segmentation_dataset: xr.Dataset, 
+    output_path: str
+) -> str:
+    """
+    Path to the saved video segmentation dataset.
+    
+    Args:
+        video_segmentation_dataset: Dataset to save
+        output_path: Base output path
+        
+    Returns:
+        Path to the saved Zarr store
+    """
+    saved_path = DatasetBuilder.save_segmentation(
+        video_segmentation_dataset, 
+        Path(output_path)
+    )
+    return str(saved_path)
+
+
+def saved_image_segmentation_path(
+    image_segmentation_dataset: xr.Dataset, 
+    output_path: str
+) -> str:
+    """
+    Path to the saved image segmentation dataset.
+    
+    Args:
+        image_segmentation_dataset: Dataset to save
+        output_path: Base output path
+        
+    Returns:
+        Path to the saved Zarr store
+    """
+    saved_path = DatasetBuilder.save_segmentation(
+        image_segmentation_dataset, 
+        Path(output_path)
+    )
+    return str(saved_path)
+
+
+def saved_analysis_path(
+    video_segmentation_dataset: xr.Dataset, 
+    output_path: str
+) -> str:
+    """
+    Path to the saved segmentation analysis.
+    
+    Args:
+        video_segmentation_dataset: Dataset to analyze
+        output_path: Base output path
+        
+    Returns:
+        Path to the saved analysis file
+    """
+    saved_path = DatasetBuilder.save_analysis(
+        video_segmentation_dataset, 
+        Path(output_path)
+    )
+    return str(saved_path)
+
+
+# --- Visualization Functions ---
 
 def colored_segmentation(
-    image: Union[np.ndarray, Image.Image],
+    image_data: Image.Image,
     segmentation_map: np.ndarray,
-    palette: np.ndarray
+    single_segmentation_metadata: Dict[str, Any]
 ) -> np.ndarray:
     """
     Colored segmentation visualization.
     
     Args:
-        image: Original image
+        image_data: Original image
         segmentation_map: Segmentation map
-        palette: Color palette for visualization
+        single_segmentation_metadata: Metadata containing palette
         
     Returns:
-        Colored segmentation as a numpy array
+        Colored segmentation as numpy array
     """
-    img_array = np.array(image) if isinstance(image, Image.Image) else image
+    palette = single_segmentation_metadata.get("palette")
     visualizer = VisualizationHandler()
     return visualizer.visualize_segmentation(
-        img_array, segmentation_map, palette, colored_only=True
+        np.array(image_data), segmentation_map, palette, colored_only=True
     )
 
 
 def segmentation_overlay(
-    image: Union[np.ndarray, Image.Image],
+    image_data: Image.Image,
     segmentation_map: np.ndarray,
-    palette: np.ndarray
+    single_segmentation_metadata: Dict[str, Any]
 ) -> np.ndarray:
     """
     Segmentation overlay on the original image.
     
     Args:
-        image: Original image
+        image_data: Original image
         segmentation_map: Segmentation map
-        palette: Color palette for visualization
+        single_segmentation_metadata: Metadata containing palette
         
     Returns:
-        Overlay visualization as a numpy array
+        Segmentation overlay as numpy array
     """
-    img_array = np.array(image) if isinstance(image, Image.Image) else image
+    palette = single_segmentation_metadata.get("palette")
     visualizer = VisualizationHandler()
     return visualizer.visualize_segmentation(
-        img_array, segmentation_map, palette, colored_only=False
+        np.array(image_data), segmentation_map, palette, colored_only=False
     )
 
 
 def saved_visualization_path(
     visualization: np.ndarray,
-    output_path: Union[str, Path],
+    output_path: str,
     suffix: str
-) -> Path:
+) -> str:
     """
-    Path to the saved visualization image.
+    Path to the saved visualization.
     
     Args:
-        visualization: Visualization data to save
-        output_path: Base path for output files
+        visualization: Visualization array to save
+        output_path: Base output path
         suffix: Suffix to add to the filename
         
     Returns:
-        Path to the saved image file
+        Path to the saved image
     """
-    path = Path(output_path) if isinstance(output_path, str) else output_path
-    save_path = path.with_name(f"{path.stem}_{suffix}.png")
-    Image.fromarray(visualization).save(save_path)
-    return save_path
+    saved_path = ImageProcessor.save_image(
+        visualization,
+        Path(output_path).with_name(f"{Path(output_path).stem}_{suffix}.png")
+    )
+    return str(saved_path)
 
+
+# --- Analysis Functions ---
 
 def category_analysis(
     segmentation_map: np.ndarray,
-    num_categories: int
+    single_segmentation_metadata: Dict[str, Any]
 ) -> Dict[int, Tuple[int, float]]:
     """
-    Analysis of category distribution in segmentation map.
+    Analysis of category distribution in a segmentation map.
     
     Args:
         segmentation_map: Segmentation map to analyze
-        num_categories: Number of categories in the segmentation
+        single_segmentation_metadata: Metadata containing label info
         
     Returns:
-        Dictionary mapping category IDs to (pixel_count, percentage)
+        Dictionary mapping category IDs to (count, percentage)
     """
+    num_categories = len(single_segmentation_metadata.get("id2label", {}))
     analyzer = SegmentationAnalyzer()
     return analyzer.analyze_segmentation_map(segmentation_map, num_categories)
 
 
 def saved_category_analysis_path(
-    analysis: Dict[int, Tuple[int, float]],
-    output_path: Union[str, Path]
-) -> Path:
+    category_analysis: Dict[int, Tuple[int, float]],
+    output_path: str
+) -> str:
     """
-    Path to the saved category analysis file.
+    Path to the saved category analysis.
     
     Args:
-        analysis: Analysis results
-        output_path: Base path for output files
+        category_analysis: Analysis results
+        output_path: Base output path
         
     Returns:
-        Path to the saved analysis file
+        Path to the saved analysis
     """
     # Extract counts and percentages
-    counts = {category_id: count for category_id, (count, _) in analysis.items()}
-    percentages = {category_id: percentage for category_id, (_, percentage) in analysis.items()}
+    counts = {category_id: count for category_id, (count, _) in category_analysis.items()}
+    percentages = {category_id: percentage for category_id, (_, percentage) in category_analysis.items()}
     
-    # Save using ParquetAnalysisStorage
     storage = ParquetAnalysisStorage()
-    path = Path(output_path) if isinstance(output_path, str) else output_path
-    return storage.save_category_analysis(
+    saved_path = storage.save_category_analysis(
         counts,
         percentages,
-        path.with_name(f"{path.stem}_category_analysis")
+        Path(output_path).with_name(f"{Path(output_path).stem}_category_analysis")
     )
+    return str(saved_path)
+
+
+# --- Result Collection Functions ---
+
+def video_process_results(
+    saved_segmentation_path: str,
+    saved_analysis_path: Optional[str] = None
+) -> Dict[str, str]:
+    """
+    Combined results of video processing.
+    
+    Args:
+        saved_segmentation_path: Path to the saved segmentation data
+        saved_analysis_path: Path to the saved analysis data
+        
+    Returns:
+        Dictionary of result paths
+    """
+    results = {"segmentation_path": saved_segmentation_path}
+    if saved_analysis_path:
+        results["analysis_path"] = saved_analysis_path
+    return results
+
+
+def image_process_results(
+    saved_image_segmentation_path: Optional[str] = None,
+    saved_category_analysis_path: Optional[str] = None,
+    saved_visualization_paths: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
+    """
+    Combined results of image processing.
+    
+    Args:
+        saved_image_segmentation_path: Path to the saved segmentation data
+        saved_category_analysis_path: Path to the saved category analysis
+        saved_visualization_paths: Dictionary of visualization paths
+        
+    Returns:
+        Dictionary of result paths
+    """
+    results = {}
+    if saved_image_segmentation_path:
+        results["segmentation_path"] = saved_image_segmentation_path
+    if saved_category_analysis_path:
+        results["analysis_path"] = saved_category_analysis_path
+    if saved_visualization_paths:
+        results.update(saved_visualization_paths)
+    return results

@@ -17,7 +17,6 @@ from cityseg.exceptions import (
     ModelError,
     ProcessingError,
 )
-from cityseg.workflow import create_workflow
 from cityseg.utils import setup_logging
 
 
@@ -73,11 +72,11 @@ def main() -> None:
                 cache_dir = config.get_output_path().parent / ".cache"
                 cache_dir.mkdir(exist_ok=True)
 
-        # Create and execute workflow
-        logger.info(f"Creating workflow for input type: {config.input_type}")
-        workflow = create_workflow(config, cache_dir)
+        # Process using Hamilton
+        logger.info(f"Processing input type: {config.input_type} with Hamilton")
+        from cityseg.hamilton_driver import process
         
-        result = workflow.process()
+        result = process(config, cache_dir)
         logger.info(f"Processing completed successfully: {result}")
 
     except ConfigurationError as e:

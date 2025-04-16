@@ -39,8 +39,8 @@ class VideoProcessor:
         Returns:
             Dictionary containing metadata like dimensions, frame count, fps
         """
-        with VideoResource(video_path) as resource:
-            return resource.get_metadata()
+        resource = VideoResource(video_path)
+        return resource.get_metadata()
     
     @staticmethod
     def get_frame_indices(frame_count: int, frame_step: int) -> List[int]:
@@ -68,7 +68,7 @@ class VideoProcessor:
         Returns:
             List of PIL Image objects representing the extracted frames
         """
-        with VideoResource(video_path) as resource:
-            frames = resource.get_frame_batch(frame_indices)
-            logger.debug(f"Extracted {len(frames)} frames from {video_path}")
-            return frames
+        resource = VideoResource(video_path)
+        frames = resource.get_frame_batch(frame_indices)
+        logger.debug(f"Extracted {len(frames)} frames from {video_path}")
+        return frames

@@ -6,6 +6,11 @@ It includes processors for handling individual files (images or videos) and
 directories containing multiple video files. The module also manages caching
 of segmentation results, generation of output visualizations, and analysis
 of segmentation statistics.
+
+Each processor class provides focused functionality following the single 
+responsibility principle, and can be used independently or combined through 
+the Hamilton-based workflow defined in the hamilton_driver and 
+hamilton_functions modules.
 """
 
 import csv
@@ -21,33 +26,34 @@ import xarray as xr
 from loguru import logger
 from PIL import Image
 
-from .config import Config, ConfigHasher, InputType
+from .config import Config, ConfigHasher, InputType, ModelConfig
 from .exceptions import InputError, ProcessingError
 from .file_handler import FileHandler
+from .image_processor import ImageProcessor
 from .pipeline import create_segmentation_pipeline
 from .processing_plan import ProcessingPlan
 from .segmentation_analyzer import SegmentationAnalyzer
+from .segmentation_processor import SegmentationProcessor
 from .storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage, StorageFactory
 from .utils import get_segmentation_batch, tqdm_context
 from .video_file_iterator import VideoFileIterator
+from .video_processor import VideoProcessor
 from .video_resource import VideoResource
 from .visualization_handler import VisualizationHandler
-from .workflow import CitysegWorkflow, create_workflow
+from .dataset_builder import DatasetBuilder
+from .hamilton_driver import process as hamilton_process
 
 
-class ImageProcessor:
+class ImageProcessorLegacy:
     """
     Processes individual images using semantic segmentation models.
 
     This class handles the segmentation of single images, including saving results
-    and analyzing the segmentation output.
+    and analyzing the segmentation output. It now delegates to the specialized component
+    classes and ultimately to Hamilton for orchestration.
 
     Attributes:
         config (Config): Configuration object containing processing parameters.
-        pipeline: Segmentation pipeline for processing images.
-        file_handler (FileHandler): Handles file operations.
-        visualizer (VisualizationHandler): Handles visualization of segmentation results.
-        analyzer (SegmentationAnalyzer): Analyzes segmentation results.
     """
 
     def __init__(self, config: Config):
@@ -58,141 +64,141 @@ class ImageProcessor:
             config (Config): Configuration object for the processor.
         """
         self.config = config
-        self.pipeline = create_segmentation_pipeline(config.model)
-        self.file_handler = FileHandler()
-        self.visualizer = VisualizationHandler()
-        self.analyzer = SegmentationAnalyzer()
 
     def process(self) -> None:
         """
         Processes the input image according to the configuration.
 
-        This method handles the entire image processing pipeline, including
-        segmentation, result saving, and analysis.
+        This method delegates to the Hamilton-based implementation which handles
+        the entire image processing pipeline including segmentation, result 
+        saving, and analysis.
 
         Raises:
             ProcessingError: If an error occurs during image processing.
         """
         logger.info(f"Processing image: {self.config.input}")
         try:
-            image = Image.open(self.config.input).convert("RGB")
-            if self.config.model.max_size:
-                image.thumbnail(
-                    (self.config.model.max_size, self.config.model.max_size)
-                )
-
-            result = self.pipeline([image])[0]
-
-            self._save_results(image, result)
-            self._analyze_results(result["seg_map"])
-
+            # Use the Hamilton driver to process the image
+            result = hamilton_process(self.config)
+            
+            # Check for errors
+            if 'error' in result:
+                raise ProcessingError(f"Error in Hamilton workflow: {result['error']}")
+                
             logger.info("Image processing complete")
         except Exception as e:
             logger.exception(f"Error during image processing: {str(e)}")
             raise ProcessingError(f"Error during image processing: {str(e)}")
-
-    def _save_results(self, image: Image.Image, result: Dict[str, Any]) -> None:
+            
+    def process_direct(self) -> Dict[str, Any]:
         """
-        Saves the segmentation results based on the configuration.
-
-        Args:
-            image (Image.Image): The original input image.
-            result (Dict[str, Any]): The segmentation result dictionary.
-        """
-        output_path = self.config.get_output_path()
-
-        # Save raw segmentation
-        if self.config.save_raw_segmentation:
-            raw_seg_path = output_path.with_name(
-                f"{output_path.stem}_raw_segmentation.png"
-            )
-            Image.fromarray(result["seg_map"].astype(np.uint8)).save(raw_seg_path)
-            logger.info(f"Raw segmentation saved to {raw_seg_path}")
-
-        # Save colored segmentation
-        if self.config.save_colored_segmentation:
-            colored_seg_path = output_path.with_name(
-                f"{output_path.stem}_colored_segmentation.png"
-            )
-            colored_seg = self.visualizer.visualize_segmentation(
-                np.array(image), result["seg_map"], result["palette"], colored_only=True
-            )
-            Image.fromarray(colored_seg).save(colored_seg_path)
-            logger.info(f"Colored segmentation saved to {colored_seg_path}")
-
-        # Save overlay
-        if self.config.save_overlay:
-            overlay_path = output_path.with_name(f"{output_path.stem}_overlay.png")
-            overlay = self.visualizer.visualize_segmentation(
-                np.array(image),
-                result["seg_map"],
-                result["palette"],
-                colored_only=False,
-            )
-            Image.fromarray(overlay).save(overlay_path)
-            logger.info(f"Overlay saved to {overlay_path}")
-
-    def _analyze_results(self, seg_map: np.ndarray) -> None:
-        """
-        Analyzes the segmentation results and saves the analysis.
-
-        Args:
-            seg_map (np.ndarray): The segmentation map to analyze.
-        """
-        output_path = self.config.get_output_path()
-        num_categories = self.config.model.num_classes
-
-        analysis = self.analyzer.analyze_segmentation_map(seg_map, num_categories)
+        Processes the input image using direct component calls without Hamilton.
         
-        # Get counts and percentages
-        counts = {category_id: count for category_id, (count, _) in analysis.items()}
-        percentages = {category_id: percentage for category_id, (_, percentage) in analysis.items()}
+        This method provides an alternative API for advanced users who want to
+        manually control the processing pipeline without Hamilton orchestration.
         
-        # Save using the Parquet storage adapter
-        analysis_storage = ParquetAnalysisStorage()
-        parquet_path = analysis_storage.save_category_analysis(
-            counts,
-            percentages,
-            output_path.with_name(f"{output_path.stem}_category_analysis")
-        )
-        
-        # Also save as CSV for backward compatibility
-        counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
-        percentages_file = output_path.with_name(
-            f"{output_path.stem}_category_percentages.csv"
-        )
+        Returns:
+            Dict[str, Any]: Dictionary containing processing results.
+        """
+        try:
+            logger.info(f"Direct processing of image: {self.config.input}")
+            
+            # Load and preprocess the image
+            image = ImageProcessor.load_image(self.config.input)
+            if self.config.model.max_size:
+                image = ImageProcessor.resize_image(image, self.config.model.max_size)
+                
+            # Create segmentation pipeline
+            pipeline = SegmentationProcessor.create_pipeline(self.config.model)
+            
+            # Process the image
+            result = SegmentationProcessor.process_image(image, pipeline)
+            
+            # Get metadata
+            metadata = {
+                "label2id": result.get("label2id", {}),
+                "id2label": result.get("id2label", {}),
+                "palette": result.get("palette", None)
+            }
+            
+            # Save results
+            output_path = self.config.get_output_path()
+            visualizer = VisualizationHandler()
+            
+            output_files = {}
+            
+            # Save raw segmentation
+            if self.config.save_raw_segmentation:
+                raw_seg_path = output_path.with_name(f"{output_path.stem}_raw_segmentation.png")
+                ImageProcessor.save_image(result["seg_map"], raw_seg_path)
+                output_files["raw_segmentation"] = str(raw_seg_path)
+                logger.info(f"Raw segmentation saved to {raw_seg_path}")
+            
+            # Save colored segmentation
+            if self.config.save_colored_segmentation:
+                colored_seg_path = output_path.with_name(f"{output_path.stem}_colored_segmentation.png")
+                colored_seg = visualizer.visualize_segmentation(
+                    np.array(image), result["seg_map"], result["palette"], colored_only=True
+                )
+                ImageProcessor.save_image(colored_seg, colored_seg_path)
+                output_files["colored_segmentation"] = str(colored_seg_path)
+                logger.info(f"Colored segmentation saved to {colored_seg_path}")
+            
+            # Save overlay
+            if self.config.save_overlay:
+                overlay_path = output_path.with_name(f"{output_path.stem}_overlay.png")
+                overlay = visualizer.visualize_segmentation(
+                    np.array(image), result["seg_map"], result["palette"], colored_only=False
+                )
+                ImageProcessor.save_image(overlay, overlay_path)
+                output_files["overlay"] = str(overlay_path)
+                logger.info(f"Overlay saved to {overlay_path}")
+            
+            # Analyze results
+            if self.config.analyze_results:
+                analyzer = SegmentationAnalyzer()
+                num_categories = len(result.get("id2label", {}))
+                analysis = analyzer.analyze_segmentation_map(result["seg_map"], num_categories)
+                
+                # Extract counts and percentages
+                counts = {category_id: count for category_id, (count, _) in analysis.items()}
+                percentages = {category_id: percentage for category_id, (_, percentage) in analysis.items()}
+                
+                # Save analysis
+                analysis_storage = ParquetAnalysisStorage()
+                parquet_path = analysis_storage.save_category_analysis(
+                    counts,
+                    percentages,
+                    output_path.with_name(f"{output_path.stem}_category_analysis")
+                )
+                output_files["analysis"] = str(parquet_path)
+                logger.info(f"Category analysis saved to {parquet_path}")
+            
+            logger.info("Image direct processing complete")
+            return {
+                "image": image,
+                "result": result,
+                "metadata": metadata,
+                "output_files": output_files
+            }
+            
+        except Exception as e:
+            logger.exception(f"Error during direct image processing: {str(e)}")
+            return {"error": str(e)}
 
-        with open(counts_file, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["category_id", "pixel_count"])
-            for category_id, count in counts.items():
-                writer.writerow([category_id, count])
 
-        with open(percentages_file, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["category_id", "percentage"])
-            for category_id, percentage in percentages.items():
-                writer.writerow([category_id, percentage])
-
-        logger.info(f"Category analysis saved to {parquet_path}")
-        logger.info(f"Category counts saved to {counts_file}")
-        logger.info(f"Category percentages saved to {percentages_file}")
-
-
-class VideoProcessor:
+class VideoProcessorLegacy:
     """
     Processes video files using semantic segmentation models.
 
     This class handles the segmentation of video frames, including saving results,
-    generating output videos, and analyzing the segmentation output.
+    generating output videos, and analyzing the segmentation output. It now
+    delegates to the specialized component classes and ultimately to Hamilton
+    for orchestration.
 
     Attributes:
         config (Config): Configuration object containing processing parameters.
-        pipeline: Segmentation pipeline for processing video frames.
         processing_plan (ProcessingPlan): Plan for video processing steps.
-        file_handler (FileHandler): Handles file operations.
-        visualizer (VisualizationHandler): Handles visualization of segmentation results.
-        analyzer (SegmentationAnalyzer): Analyzes segmentation results.
     """
 
     def __init__(self, config: Config):
@@ -203,12 +209,8 @@ class VideoProcessor:
             config (Config): Configuration object for the processor.
         """
         self.config = config
-        self.pipeline = create_segmentation_pipeline(config.model)
         self.processing_plan = ProcessingPlan(config)
-        self.file_handler = FileHandler()
-        self.visualizer = VisualizationHandler()
-        self.analyzer = SegmentationAnalyzer()
-        logger.debug(f"VideoProcessor initialized with config: {config}")
+        logger.debug(f"VideoProcessorLegacy initialized with config: {config}")
 
     def get_output_video_path(self) -> Path:
         """
@@ -243,29 +245,29 @@ class VideoProcessor:
         """
         Processes the input video according to the configuration and processing plan.
 
-        This method handles the entire video processing pipeline, including
-        frame segmentation, result saving, video generation, and analysis.
+        This method delegates to the Hamilton-based implementation which handles
+        the entire video processing pipeline including frame segmentation, result
+        saving, video generation, and analysis.
 
         Raises:
             ProcessingError: If an error occurs during video processing.
         """
         logger.info(f"Processing video: {self.config.input.name}")
         try:
-            output_path = self.get_output_video_path()
-            zarr_path = self.get_output_segmentation_path()
-
+            # Use the Hamilton driver to process the video
             if self.processing_plan.plan["process_video"]:
-                logger.debug("Using workflow to process video")
-                # Create and run the workflow
-                workflow = create_workflow(self.config)
-                result = workflow.process_video()
+                logger.debug("Using Hamilton workflow to process video")
+                result = hamilton_process(self.config)
                 
                 if 'error' in result:
-                    raise ProcessingError(f"Error in workflow: {result['error']}")
+                    raise ProcessingError(f"Error in Hamilton workflow: {result['error']}")
                 
-                segmentation_dataset = result['segmentation_dataset']
-                metadata = dict(segmentation_dataset.attrs)
+                # For backward compatibility with existing visualization code
+                segmentation_dataset = result['dataset']
+                metadata = result['metadata']
             else:
+                # Load existing segmentation data
+                zarr_path = self.get_output_segmentation_path()
                 logger.info(
                     f"Loading existing segmentation data from Zarr file: {zarr_path.name}"
                 )
@@ -276,52 +278,119 @@ class VideoProcessor:
                 self.processing_plan.plan["generate_colored_video"]
                 or self.processing_plan.plan["generate_overlay_video"]
             ):
-                self.generate_videos(segmentation_dataset, metadata)
+                self._generate_videos_direct(segmentation_dataset, metadata)
 
-            if self.processing_plan.plan["analyze_results"] and 'save_analysis' not in result:
-                logger.debug("Analyzing segmentation results")
-                analysis_storage = ParquetAnalysisStorage()
-                analysis_storage.save_video_analysis(
-                    segmentation_dataset,
-                    metadata,
-                    output_path.with_name(f"{output_path.stem}_analysis")
-                )
-
+            # Update processing history
             self._update_processing_history()
 
             logger.info("Video processing complete")
         except Exception as e:
             logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
-        finally:
-            # Zarr files are automatically closed and don't need manual cleanup
-            pass
 
-    # The following methods use the new storage adapters but could eventually be migrated
-    # completely to the CitysegWorkflow implementation
-
-    def generate_videos(
-        self, segmentation_dataset: xr.Dataset, metadata: Dict[str, Any]
-    ) -> None:
+    def process_direct(self) -> Dict[str, Any]:
         """
-        Generates output videos based on the processing plan, using batched processing.
+        Processes a video using direct component calls without Hamilton.
+        
+        This method provides an alternative API for advanced users who want to
+        manually control the processing pipeline without Hamilton orchestration.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing processing results.
+        """
+        try:
+            logger.info(f"Direct processing of video: {self.config.input}")
+            output_path = self.get_output_video_path()
+            
+            # Get video metadata
+            video_metadata = VideoProcessor.get_metadata(self.config.input)
+            
+            # Determine frame indices
+            frame_indices = VideoProcessor.get_frame_indices(
+                video_metadata["frame_count"], 
+                self.config.frame_step
+            )
+            
+            # Get frames
+            frames = VideoProcessor.get_frames(self.config.input, frame_indices)
+            
+            # Create segmentation pipeline
+            pipeline = SegmentationProcessor.create_pipeline(self.config.model)
+            
+            # Process frames
+            batch_results = SegmentationProcessor.process_batch(frames, pipeline)
+            seg_maps = SegmentationProcessor.extract_segmentation_maps(batch_results)
+            seg_metadata = SegmentationProcessor.extract_metadata(batch_results)
+            
+            # Create dataset
+            dataset = DatasetBuilder.create_video_dataset(
+                seg_maps,
+                video_metadata,
+                frame_indices,
+                self.config.model.to_dict(),
+                seg_metadata
+            )
+            
+            # Save segmentation data
+            segmentation_path = DatasetBuilder.save_segmentation(
+                dataset, 
+                output_path
+            )
+            
+            # Save analysis if requested
+            analysis_path = None
+            if self.config.analyze_results:
+                analysis_path = DatasetBuilder.save_analysis(
+                    dataset,
+                    output_path
+                )
+            
+            # Generate videos if requested
+            visualization_paths = {}
+            if self.processing_plan.plan["generate_colored_video"] or self.processing_plan.plan["generate_overlay_video"]:
+                visualization_paths = self._generate_videos_direct(dataset, dict(dataset.attrs))
+            
+            # Update processing history
+            self._update_processing_history()
+            
+            logger.info("Video direct processing complete")
+            return {
+                "metadata": video_metadata,
+                "dataset": dataset,
+                "segmentation_path": str(segmentation_path),
+                "analysis_path": str(analysis_path) if analysis_path else None,
+                "visualization_paths": visualization_paths
+            }
+            
+        except Exception as e:
+            logger.exception(f"Error during direct video processing: {str(e)}")
+            return {"error": str(e)}
+
+    def _generate_videos_direct(
+        self, segmentation_dataset: xr.Dataset, metadata: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """
+        Generates output videos using direct component calls.
 
         Args:
             segmentation_dataset (xr.Dataset): The segmentation dataset containing all frames.
             metadata (Dict[str, Any]): Metadata about the video and segmentation.
+            
+        Returns:
+            Dict[str, str]: Dictionary mapping video types to their file paths.
         """
         if not (
             self.processing_plan.plan.get("generate_colored_video", False)
             or self.processing_plan.plan.get("generate_overlay_video", False)
         ):
             logger.info("No video generation required according to the processing plan")
-            return
+            return {}
 
         start_time = time.time()
+        visualization_paths = {}
         
-        # Use VideoResource for better resource management
-        video_resource = VideoResource(self.config.input)
-        video_metadata = video_resource.get_metadata()
+        # Get video metadata
+        video_metadata = VideoProcessor.get_metadata(self.config.input)
         
         width = video_metadata["width"]
         height = video_metadata["height"]
@@ -335,11 +404,29 @@ class VideoProcessor:
                 palette = np.array(palette_attr, dtype=np.uint8)
 
         output_base = self.config.get_output_path()
-        video_writers = self._initialize_video_writers(width, height, fps)
+        
+        # Initialize video writers
+        writers = {}
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+
+        if self.processing_plan.plan.get("generate_colored_video", False):
+            colored_path = output_base.with_name(f"{output_base.stem}_colored.mp4")
+            writers["colored"] = cv2.VideoWriter(
+                str(colored_path), fourcc, fps, (width, height)
+            )
+            visualization_paths["colored"] = str(colored_path)
+
+        if self.processing_plan.plan.get("generate_overlay_video", False):
+            overlay_path = output_base.with_name(f"{output_base.stem}_overlay.mp4")
+            writers["overlay"] = cv2.VideoWriter(
+                str(overlay_path), fourcc, fps, (width, height)
+            )
+            visualization_paths["overlay"] = str(overlay_path)
         
         # Get access to the segmentation data
         segmentation_data = segmentation_dataset.segmentation
         total_frames = segmentation_data.shape[0]
+        visualizer = VisualizationHandler()
 
         # Process in chunks for memory efficiency
         chunk_size = 100  # Adjust this value based on available memory
@@ -355,185 +442,39 @@ class VideoProcessor:
             frame_step = metadata.get("frame_step", 1)
             video_frame_indices = [idx * int(frame_step) for idx in frame_indices]
             
-            # Load the frames using VideoResource
-            frames = video_resource.get_frame_batch(video_frame_indices)
+            # Load the frames
+            frames = VideoProcessor.get_frames(self.config.input, video_frame_indices)
             frames_np = [np.array(frame) for frame in frames]
             
             # Generate and write video frames
             if self.processing_plan.plan.get("generate_colored_video", False):
-                colored_frames = self.visualizer.visualize_segmentation(
+                colored_frames = visualizer.visualize_segmentation(
                     frames_np, seg_chunk, palette, colored_only=True
                 )
                 for colored_frame in colored_frames:
-                    video_writers["colored"].write(
+                    writers["colored"].write(
                         cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
                     )
 
             if self.processing_plan.plan.get("generate_overlay_video", False):
-                overlay_frames = self.visualizer.visualize_segmentation(
+                overlay_frames = visualizer.visualize_segmentation(
                     frames_np, seg_chunk, palette, colored_only=False
                 )
                 for overlay_frame in overlay_frames:
-                    video_writers["overlay"].write(
+                    writers["overlay"].write(
                         cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
                     )
 
         # Release all resources
-        for writer in video_writers.values():
+        for writer in writers.values():
             writer.release()
             
         logger.debug(
             f"Video generation completed in {time.time() - start_time:.2f} seconds"
         )
         logger.debug(f"Videos saved to: {output_base}")
-
-    def _initialize_video_writers(
-        self, width: int, height: int, fps: float
-    ) -> Dict[str, cv2.VideoWriter]:
-        """
-        Initializes video writers for output videos.
-
-        Args:
-            width (int): Width of the video frame.
-            height (int): Height of the video frame.
-            fps (float): Frames per second of the output video.
-
-        Returns:
-            Dict[str, cv2.VideoWriter]: A dictionary of initialized video writers.
-        """
-        writers = {}
-        output_base = self.config.get_output_path()
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-
-        if self.processing_plan.plan.get("generate_colored_video", False):
-            colored_path = output_base.with_name(f"{output_base.stem}_colored.mp4")
-            writers["colored"] = cv2.VideoWriter(
-                str(colored_path), fourcc, fps, (width, height)
-            )
-
-        if self.processing_plan.plan.get("generate_overlay_video", False):
-            overlay_path = output_base.with_name(f"{output_base.stem}_overlay.mp4")
-            writers["overlay"] = cv2.VideoWriter(
-                str(overlay_path), fourcc, fps, (width, height)
-            )
-
-        return writers
-
-    @staticmethod
-    def _get_video_frames_batch(
-        cap: cv2.VideoCapture, start: int, end: int, frame_step: int
-    ) -> List[np.ndarray]:
-        """
-        Gets a batch of video frames.
-
-        Args:
-            cap (cv2.VideoCapture): Video capture object.
-            start (int): Start index of the batch.
-            end (int): End index of the batch.
-            frame_step (int): Step between frames.
-
-        Returns:
-            List[np.ndarray]: A list of video frames.
-        """
-        frames = []
-        for frame_index in range(start * frame_step, end * frame_step, frame_step):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frames.append(frame)
-        return frames
-
-    def _create_video(
-        self,
-        video_path: Path,
-        segmentation_dataset: xr.Dataset,
-        metadata: Dict[str, Any],
-        output_path: Path,
-        colored_only: bool,
-    ) -> None:
-        """
-        Creates a video from segmentation data.
-
-        Args:
-            video_path (Path): Path to the original video file.
-            segmentation_dataset (xr.Dataset): Segmentation dataset.
-            metadata (Dict[str, Any]): Metadata about the video and segmentation.
-            output_path (Path): Path to save the output video.
-            colored_only (bool): If True, create colored segmentation; if False, create overlay.
-        """
-        # Use VideoResource for better resource management
-        video_resource = VideoResource(video_path)
-        video_metadata = video_resource.get_metadata()
         
-        # Get palette from metadata
-        palette = np.array(metadata.get("palette", []), dtype=np.uint8)
-        if len(palette) == 0 and "palette" in segmentation_dataset.attrs:
-            palette_attr = segmentation_dataset.attrs.get("palette")
-            if isinstance(palette_attr, list):
-                palette = np.array(palette_attr, dtype=np.uint8)
-                
-        # Setup video writer
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        fps = metadata.get("fps", video_metadata["fps"]) / metadata.get("frame_step", 1)
-        width = video_metadata["width"]
-        height = video_metadata["height"]
-        
-        out = cv2.VideoWriter(
-            str(output_path),
-            fourcc,
-            fps,
-            (width, height),
-        )
-
-        # Get segmentation data
-        segmentation_data = segmentation_dataset.segmentation
-        
-        # Get frame indices based on frame step
-        frame_step = int(metadata.get("frame_step", 1))
-        total_frames = segmentation_data.shape[0]
-        
-        with tqdm_context(
-            total=total_frames,
-            desc=f"Generating {'colored' if colored_only else 'overlay'} video",
-            disable=self.config.disable_tqdm,
-        ) as pbar:
-            # Process in chunks for memory efficiency
-            chunk_size = 100
-            for chunk_start in range(0, total_frames, chunk_size):
-                chunk_end = min(chunk_start + chunk_size, total_frames)
-                
-                # Get segmentation data batch using xarray
-                seg_chunk = segmentation_data.isel(time=slice(chunk_start, chunk_end)).values
-                
-                # Get the corresponding video frames
-                frame_indices = list(range(chunk_start, chunk_end))
-                # Map these to actual frame indices in the video using frame_step
-                video_frame_indices = [idx * frame_step for idx in frame_indices]
-                
-                # Load the frames using VideoResource
-                frames = video_resource.get_frame_batch(video_frame_indices)
-                frames_np = [np.array(frame) for frame in frames]
-                
-                # Generate and write video frames
-                if colored_only:
-                    visualized_frames = self.visualizer.visualize_segmentation(
-                        frames_np, seg_chunk, palette, colored_only=True
-                    )
-                else:
-                    visualized_frames = self.visualizer.visualize_segmentation(
-                        frames_np, seg_chunk, palette, colored_only=False
-                    )
-                    
-                for visualized in visualized_frames:
-                    out.write(cv2.cvtColor(visualized, cv2.COLOR_RGB2BGR))
-                    
-                pbar.update(len(frames_np))
-
-        out.release()
-        logger.info(
-            f"{'Colored' if colored_only else 'Overlay'} video saved to {output_path}"
-        )
+        return visualization_paths
 
     def _update_processing_history(self) -> None:
         """
@@ -568,34 +509,38 @@ class VideoProcessor:
             logger.error(f"Error updating processing history: {str(e)}")
 
 
-class SegmentationProcessor:
+class SegmentationProcessorWrapper:
     """
     Handles segmentation processing for both images and videos.
 
-    This class serves as a facade for ImageProcessor and VideoProcessor,
-    delegating the processing based on the input type.
+    This class serves as a facade for ImageProcessorLegacy and VideoProcessorLegacy,
+    delegating the processing based on the input type. It acts as a compatibility
+    layer for existing code while the system transitions to the Hamilton-based workflow.
 
     Attributes:
         config (Config): Configuration object containing processing parameters.
-        image_processor (ImageProcessor): Processor for handling image inputs.
-        video_processor (VideoProcessor): Processor for handling video inputs.
+        image_processor (ImageProcessorLegacy): Processor for handling image inputs.
+        video_processor (VideoProcessorLegacy): Processor for handling video inputs.
     """
 
     def __init__(self, config: Config):
         """
-        Initializes the SegmentationProcessor with the given configuration.
+        Initializes the SegmentationProcessorWrapper with the given configuration.
 
         Args:
             config (Config): Configuration object for the processor.
         """
         self.config = config
-        self.image_processor = ImageProcessor(config)
-        self.video_processor = VideoProcessor(config)
-        logger.debug(f"SegmentationProcessor initialized with config: {config}")
+        self.image_processor = ImageProcessorLegacy(config)
+        self.video_processor = VideoProcessorLegacy(config)
+        logger.debug(f"SegmentationProcessorWrapper initialized with config: {config}")
 
     def process(self):
         """
         Processes the input based on its type (image or video).
+        
+        This method delegates to the appropriate processor instance which
+        ultimately uses the Hamilton-based implementation.
 
         Raises:
             ValueError: If the input type is not supported.
@@ -606,13 +551,33 @@ class SegmentationProcessor:
             self.video_processor.process()
         else:
             raise ValueError(f"Unsupported input type: {self.config.input_type}")
+            
+    def process_direct(self) -> Dict[str, Any]:
+        """
+        Processes the input directly without using Hamilton.
+        
+        This method provides an alternative API for advanced users who want to
+        manually control the processing pipeline without Hamilton orchestration.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing processing results.
+        """
+        if self.config.input_type == InputType.SINGLE_IMAGE:
+            return self.image_processor.process_direct()
+        elif self.config.input_type == InputType.SINGLE_VIDEO:
+            return self.video_processor.process_direct()
+        else:
+            return {
+                "error": f"Unsupported input type for direct processing: {self.config.input_type}"
+            }
 
 
-class DirectoryProcessor:
+class DirectoryProcessorLegacy:
     """
     Processes multiple video files in a directory.
 
     This class handles the batch processing of video files found in a specified directory.
+    It now delegates to the Hamilton-based implementation for each video file.
 
     Attributes:
         config (Config): Configuration object containing processing parameters.
@@ -622,7 +587,7 @@ class DirectoryProcessor:
 
     def __init__(self, config: Config):
         """
-        Initializes the DirectoryProcessor with the given configuration.
+        Initializes the DirectoryProcessorLegacy with the given configuration.
 
         Args:
             config (Config): Configuration object for the processor.
@@ -642,7 +607,8 @@ class DirectoryProcessor:
         Processes all video files in the specified directory.
 
         This method iterates through all video files, processing each one
-        according to the configuration.
+        according to the configuration. It delegates to the Hamilton-based 
+        implementation for each individual file.
 
         Raises:
             InputError: If no video files are found in the directory.
@@ -689,6 +655,58 @@ class DirectoryProcessor:
             "Finished processing all videos", input_directory=str(self.config.input)
         )
 
+    def process_direct(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Processes all video files in the directory using direct component calls.
+        
+        This method provides an alternative API for advanced users who want to
+        manually control the processing pipeline without Hamilton orchestration.
+        
+        Returns:
+            Dict[str, Dict[str, Any]]: Dictionary mapping file paths to their processing results.
+        """
+        self.logger.debug(
+            "Starting direct directory processing", input_path=str(self.config.input)
+        )
+        
+        results = {}
+        
+        if not self.video_iterator.video_files:
+            self.logger.error("No video files found")
+            return {"error": f"No video files found in directory: {self.config.input}"}
+            
+        output_dir = self.config.get_output_path()
+        self.logger.info(
+            f"Output directory set: {str(output_dir)}", output_dir=str(output_dir)
+        )
+        
+        for video_file in self.video_iterator:
+            if video_file.name in self.config.ignore_files:
+                self.logger.info(
+                    f"Ignoring video file: {str(video_file.name)}",
+                    video_file=str(video_file),
+                )
+                results[str(video_file)] = {"status": "skipped"}
+                continue
+                
+            try:
+                video_config = self._create_video_config(video_file, output_dir)
+                processor = SegmentationProcessorWrapper(video_config)
+                results[str(video_file)] = processor.process_direct()
+            except Exception as e:
+                self.logger.error(
+                    "Error in direct video processing", 
+                    video_file=str(video_file), 
+                    error=str(e)
+                )
+                results[str(video_file)] = {"error": str(e)}
+                
+        self.logger.info(
+            "Finished direct processing of all videos", 
+            input_directory=str(self.config.input)
+        )
+        return results
+
     def _process_single_video(self, video_file: Path, output_dir: Path) -> None:
         """
         Processes a single video file.
@@ -705,17 +723,12 @@ class DirectoryProcessor:
         logger.debug("Video config created", video_config=video_config)
 
         try:
-            # Use SegmentationProcessor which internally uses our new workflow
-            # This maintains backward compatibility with existing calling code
-            processor = SegmentationProcessor(video_config)
-            processor.process()
+            # Use Hamilton to process the video
+            result = hamilton_process(video_config)
             
-            # TODO: In a future version, we could directly use the workflow approach 
-            # which would be slightly more efficient but requires API changes:
-            # workflow = create_workflow(video_config)
-            # result = workflow.process()
-            # if 'error' in result:
-            #     raise ProcessingError(f"Error in workflow: {result['error']}")
+            if 'error' in result:
+                raise ProcessingError(f"Error in Hamilton workflow: {result['error']}")
+                
         except Exception as e:
             self.logger.error(
                 "Error in video processing", video_file=str(video_file), error=str(e)
@@ -751,17 +764,21 @@ class DirectoryProcessor:
 
 def create_processor(
     config: Config,
-) -> Union[SegmentationProcessor, DirectoryProcessor]:
+) -> Union[SegmentationProcessorWrapper, DirectoryProcessorLegacy]:
     """
     Creates and returns the appropriate processor based on the input type.
+
+    This function serves as a factory for creating processor instances that
+    delegate to the Hamilton-based implementation. It maintains API compatibility
+    with existing code while transitioning to Hamilton for orchestration.
 
     Args:
         config (Config): Configuration object containing processing parameters.
 
     Returns:
-        Union[SegmentationProcessor, DirectoryProcessor]: The appropriate processor instance.
+        Union[SegmentationProcessorWrapper, DirectoryProcessorLegacy]: The appropriate processor instance.
     """
     if config.input_type == InputType.DIRECTORY:
-        return DirectoryProcessor(config)
+        return DirectoryProcessorLegacy(config)
     else:
-        return SegmentationProcessor(config)
+        return SegmentationProcessorWrapper(config)

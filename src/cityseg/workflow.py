@@ -1,24 +1,24 @@
 """
-This module provides a workflow implementation using Hamilton for the CitySeg pipeline.
+This module provides backward compatibility for the CitySeg pipeline.
 
-It defines the functions and data flow for processing images and videos through
-the segmentation pipeline, with proper caching and resource management.
+It ensures that existing code can continue to use the CitysegWorkflow class,
+but delegates actual processing to the new Hamilton-based implementation.
 """
 
-import csv
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import xarray as xr
-from PIL import Image
-from loguru import logger
 from hamilton import driver
+from loguru import logger
+from PIL import Image
 
-from .config import Config, ModelConfig
-from .pipeline import create_segmentation_pipeline
+from .config import Config, ModelConfig  
+from .hamilton_driver import process as hamilton_process
 from .video_resource import VideoResource
+from .pipeline import create_segmentation_pipeline
 from .storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage
 
 
