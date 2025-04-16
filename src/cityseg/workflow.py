@@ -290,10 +290,40 @@ class CitysegWorkflow:
         # Use the current module as the dataflow module
         module = sys.modules[__name__]
         
-        # Create driver directly with the module
-        driver_instance = driver.Driver({}, module)
+        # Initial inputs for the Hamilton driver
+        initial_inputs = {
+            'video_path': str(self.config.input),
+            'frame_step': self.config.frame_step,
+            'model': self.config.model.to_dict(),
+            'output_path': str(self.config.get_output_path())
+        }
         
-        # Log creation
+        # Create a driver with caching if cache_dir is provided
+        if self.cache_dir:
+            try:
+                # Create the cache directory if it doesn't exist
+                cache_dir = Path(self.cache_dir)
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Create a driver with Builder and caching
+                driver_instance = driver.Builder()\
+                    .with_modules(module)\
+                    .with_config(initial_inputs)\
+                    .with_cache(path=str(cache_dir))\
+                    .build()
+                
+                logger.info(f"Created Hamilton driver with module: {module.__name__} and caching enabled at {cache_dir}")
+                return driver_instance
+                
+            except (ImportError, AttributeError) as e:
+                # Fall back to standard driver if caching setup fails
+                logger.warning(f"Failed to set up caching: {str(e)}")
+                logger.info("Falling back to standard driver without caching")
+        
+        # Create a standard driver without caching if either:
+        # 1. No cache_dir was provided
+        # 2. There was an error setting up caching
+        driver_instance = driver.Driver(initial_inputs, module)
         logger.info(f"Created Hamilton driver with module: {module.__name__}")
         
         return driver_instance
@@ -305,27 +335,94 @@ class CitysegWorkflow:
         Returns:
             Dict[str, Any]: Dictionary containing workflow results.
         """
-        # Prepare inputs for the workflow
-        inputs = {
-            'video_path': str(self.config.input),
-            'frame_step': self.config.frame_step,
-            'model': self.config.model.to_dict(),
-            'output_path': str(self.config.get_output_path())
-        }
-        
-        # Define desired outputs
-        outputs = [
-            'segmentation_dataset',
-            'save_segmentation',
-            'save_analysis'
-        ]
-        
-        # Execute the workflow
-        logger.info(f"Processing video: {self.config.input}")
-        result = self._driver.execute(outputs, inputs=inputs)
-        logger.info(f"Processing complete, results saved to: {result['save_segmentation']}")
-        
-        return result
+        try:
+            # Rather than using Hamilton's execute, let's implement our workflow directly
+            logger.info(f"Processing video: {self.config.input}")
+            
+            # 1. Get video metadata
+            video_resource = VideoResource(self.config.input)
+            video_metadata = video_resource.get_metadata()
+            
+            # 2. Determine frame indices based on frame step
+            frame_indices = list(range(0, video_metadata['frame_count'], self.config.frame_step))
+            
+            # 3. Get video frames
+            frames = video_resource.get_frame_batch(frame_indices)
+            
+            # 4. Create and initialize segmentation pipeline
+            pipeline = create_segmentation_pipeline(self.config.model)
+            
+            # 5. Process frames through pipeline
+            logger.info(f"Processing {len(frames)} frames through segmentation pipeline")
+            results = pipeline(frames)
+            seg_maps = [result["seg_map"] for result in results]
+            
+            # 6. Create xarray dataset from segmentation maps
+            time_coords = np.array(frame_indices) / video_metadata['fps']
+            
+            # Stack segmentation maps into a 3D array
+            segmentation_array = np.stack(seg_maps)
+            
+            # Create xarray DataArray with named dimensions
+            segmentation_data = xr.DataArray(
+                segmentation_array,
+                dims=["time", "y", "x"],
+                coords={
+                    "time": time_coords,
+                    "y": np.arange(video_metadata['height']),
+                    "x": np.arange(video_metadata['width'])
+                }
+            )
+            
+            # Create dataset with metadata
+            dataset = xr.Dataset(
+                data_vars={"segmentation": segmentation_data},
+                attrs={
+                    "model_name": self.config.model.name,
+                    "model_type": self.config.model.model_type,
+                    "fps": video_metadata['fps'],
+                    "frame_step": self.config.frame_step,
+                    "original_width": video_metadata['width'],
+                    "original_height": video_metadata['height'],
+                    "codec": video_metadata.get('codec', None),
+                    "palette": pipeline.palette.tolist() if hasattr(pipeline, 'palette') and pipeline.palette is not None else []
+                }
+            )
+            
+            # 7. Save segmentation dataset to Zarr
+            storage = ZarrSegmentationStorage()
+            save_path = storage.save_segmentation_data(
+                dataset, 
+                dict(dataset.attrs),
+                Path(self.config.get_output_path())
+            )
+            
+            # 8. Save analysis to Parquet
+            analysis_storage = ParquetAnalysisStorage()
+            analysis_path = analysis_storage.save_video_analysis(
+                dataset,
+                dict(dataset.attrs),
+                Path(self.config.get_output_path()).with_name(f"{Path(self.config.get_output_path()).stem}_analysis")
+            )
+            
+            # 9. Return results
+            result = {
+                'segmentation_dataset': dataset,
+                'save_segmentation': str(save_path),
+                'save_analysis': str(analysis_path)
+            }
+            
+            logger.info(f"Processing complete, results saved to: {save_path}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing video: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Return what we have
+            return {
+                'error': str(e)
+            }
     
     def process_image(self) -> Dict[str, Any]:
         """

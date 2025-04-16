@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Tuple, Union
 
 import cv2
-import h5py
 import numpy as np
+import xarray as xr
 from loguru import logger
 from PIL import Image
 
@@ -27,9 +27,12 @@ from .file_handler import FileHandler
 from .pipeline import create_segmentation_pipeline
 from .processing_plan import ProcessingPlan
 from .segmentation_analyzer import SegmentationAnalyzer
+from .storage_adapter import ZarrSegmentationStorage, ParquetAnalysisStorage, StorageFactory
 from .utils import get_segmentation_data_batch, tqdm_context
 from .video_file_iterator import VideoFileIterator
+from .video_resource import VideoResource
 from .visualization_handler import VisualizationHandler
+from .workflow import CitysegWorkflow, create_workflow
 
 
 class ImageProcessor:
@@ -140,7 +143,20 @@ class ImageProcessor:
         num_categories = self.config.model.num_classes
 
         analysis = self.analyzer.analyze_segmentation_map(seg_map, num_categories)
-
+        
+        # Get counts and percentages
+        counts = {category_id: count for category_id, (count, _) in analysis.items()}
+        percentages = {category_id: percentage for category_id, (_, percentage) in analysis.items()}
+        
+        # Save using the Parquet storage adapter
+        analysis_storage = ParquetAnalysisStorage()
+        parquet_path = analysis_storage.save_category_analysis(
+            counts,
+            percentages,
+            output_path.with_name(f"{output_path.stem}_category_analysis")
+        )
+        
+        # Also save as CSV for backward compatibility
         counts_file = output_path.with_name(f"{output_path.stem}_category_counts.csv")
         percentages_file = output_path.with_name(
             f"{output_path.stem}_category_percentages.csv"
@@ -149,15 +165,16 @@ class ImageProcessor:
         with open(counts_file, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["category_id", "pixel_count"])
-            for category_id, (pixel_count, _) in analysis.items():
-                writer.writerow([category_id, pixel_count])
+            for category_id, count in counts.items():
+                writer.writerow([category_id, count])
 
         with open(percentages_file, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["category_id", "percentage"])
-            for category_id, (_, percentage) in analysis.items():
+            for category_id, percentage in percentages.items():
                 writer.writerow([category_id, percentage])
 
+        logger.info(f"Category analysis saved to {parquet_path}")
         logger.info(f"Category counts saved to {counts_file}")
         logger.info(f"Category percentages saved to {percentages_file}")
 
@@ -193,6 +210,35 @@ class VideoProcessor:
         self.analyzer = SegmentationAnalyzer()
         logger.debug(f"VideoProcessor initialized with config: {config}")
 
+    def get_output_video_path(self) -> Path:
+        """
+        Returns the output path for the processed video.
+
+        Returns:
+            Path: The output path for the processed video.
+        """
+        return self.config.get_output_path()
+
+    def get_output_segmentation_path(self) -> Path:
+        """
+        Returns the output path for the processed segmentation data file.
+
+        Returns:
+            Path: The output path for the processed segmentation data file.
+        """
+        output_path = self.config.get_output_path()
+        return output_path.with_name(f"{output_path.stem}_segmentation.zarr")
+
+    def load_segmentation_data(self) -> Tuple[xr.Dataset, Dict[str, Any]]:
+        """
+        Loads segmentation data and metadata from a Zarr file.
+
+        Returns:
+            Tuple[xr.Dataset, Dict[str, Any]]: Loaded segmentation dataset and metadata.
+        """
+        storage = ZarrSegmentationStorage()
+        return storage.load_segmentation_data(self.get_output_segmentation_path())
+
     def process(self) -> None:
         """
         Processes the input video according to the configuration and processing plan.
@@ -205,37 +251,40 @@ class VideoProcessor:
         """
         logger.info(f"Processing video: {self.config.input.name}")
         try:
-            output_path = self.config.get_output_path()
-            hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
+            output_path = self.get_output_video_path()
+            zarr_path = self.get_output_segmentation_path()
 
             if self.processing_plan.plan["process_video"]:
-                # logger.debug("Executing video frame processing")
-                segmentation_data, metadata = self._process_video_frames()
-                if self.processing_plan.plan["generate_hdf"]:
-                    logger.debug(f"Saving segmentation data to HDF file: {hdf_path}")
-                    self.file_handler.save_hdf_file(
-                        hdf_path, segmentation_data, metadata
-                    )
+                logger.debug("Using workflow to process video")
+                # Create and run the workflow
+                workflow = create_workflow(self.config)
+                result = workflow.process_video()
+                
+                if 'error' in result:
+                    raise ProcessingError(f"Error in workflow: {result['error']}")
+                
+                segmentation_dataset = result['segmentation_dataset']
+                metadata = dict(segmentation_dataset.attrs)
             else:
                 logger.info(
-                    f"Loading existing segmentation data from HDF file: {hdf_path.name}"
+                    f"Loading existing segmentation data from Zarr file: {zarr_path.name}"
                 )
-                hdf_file, metadata = self.file_handler.load_hdf_file(hdf_path)
-                segmentation_data = hdf_file[
-                    "segmentation"
-                ]  # This is now a h5py.Dataset
+                segmentation_dataset, metadata = self.load_segmentation_data()
 
             # Generate videos based on the processing plan
             if (
                 self.processing_plan.plan["generate_colored_video"]
                 or self.processing_plan.plan["generate_overlay_video"]
             ):
-                self.generate_videos(segmentation_data, metadata)
+                self.generate_videos(segmentation_dataset, metadata)
 
-            if self.processing_plan.plan["analyze_results"]:
+            if self.processing_plan.plan["analyze_results"] and 'save_analysis' not in result:
                 logger.debug("Analyzing segmentation results")
-                SegmentationAnalyzer.analyze_results(
-                    segmentation_data, metadata, output_path
+                analysis_storage = ParquetAnalysisStorage()
+                analysis_storage.save_video_analysis(
+                    segmentation_dataset,
+                    metadata,
+                    output_path.with_name(f"{output_path.stem}_analysis")
                 )
 
             self._update_processing_history()
@@ -245,90 +294,19 @@ class VideoProcessor:
             logger.exception(f"Error during video processing: {str(e)}")
             raise ProcessingError(f"Error during video processing: {str(e)}")
         finally:
-            if hasattr(self, "hdf_file"):
-                self.hdf_file.close()
+            # No longer need to manually close HDF files
+            pass
 
-    def _process_video_frames(self) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """
-        Processes video frames in batches and returns segmentation data and metadata.
-
-        Returns:
-            Tuple[np.ndarray, Dict[str, Any]]: Segmentation data and metadata.
-        """
-        cap = cv2.VideoCapture(str(self.config.input))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        cap.release()
-
-        segmentation_data = []
-
-        logger.info(f"Processing video frames in batches of {self.config.batch_size}")
-        with tqdm_context(
-            total=total_frames // self.config.frame_step,
-            desc="Processing frames",
-            disable=self.config.disable_tqdm,
-        ) as pbar:
-            for batch in self._frame_generator(
-                cv2.VideoCapture(str(self.config.input))
-            ):
-                # logger.debug("Loading batch into pipeline...")
-                batch_results = self.pipeline(batch)
-                # logger.debug("Adding batch results to segmentation data...")
-                segmentation_data.extend(
-                    [result["seg_map"] for result in batch_results]
-                )
-                pbar.update(len(batch))
-        cap.release()
-
-        metadata = {
-            "model_name": self.config.model.name,
-            "original_video": str(self.config.input.name),
-            "palette": np.array(self.pipeline.palette.tolist(), np.uint8)
-            if self.pipeline.palette is not None
-            else None,
-            "label_ids": self.pipeline.model.config.id2label,
-            "frame_count": len(segmentation_data),
-            "frame_step": self.config.frame_step,
-            "total_video_frames": total_frames,
-            "fps": fps,
-        }
-
-        return np.array(segmentation_data), metadata
-
-    def _frame_generator(self, cap: cv2.VideoCapture) -> Iterator[List[Image.Image]]:
-        """
-        Generates batches of frames from a video capture object.
-
-        Args:
-            cap (cv2.VideoCapture): The video capture object.
-
-        Yields:
-            Iterator[List[Image.Image]]: Batches of frames as PIL Image objects.
-        """
-        while True:
-            frames = []
-            for _ in range(self.config.batch_size):
-                for _ in range(self.config.frame_step):
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                if not ret:
-                    break
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_image = Image.fromarray(rgb_frame)
-                frames.append(pil_image)
-            if not frames:
-                break
-            yield frames
+    # These methods are replaced by the CitysegWorkflow implementation
 
     def generate_videos(
-        self, segmentation_data: h5py.Dataset, metadata: Dict[str, Any]
+        self, segmentation_dataset: xr.Dataset, metadata: Dict[str, Any]
     ) -> None:
         """
         Generates output videos based on the processing plan, using batched processing.
 
         Args:
-            segmentation_data (h5py.Dataset): The segmentation data for all frames.
+            segmentation_dataset (xr.Dataset): The segmentation dataset containing all frames.
             metadata (Dict[str, Any]): Metadata about the video and segmentation.
         """
         if not (
@@ -339,47 +317,70 @@ class VideoProcessor:
             return
 
         start_time = time.time()
-        cap = cv2.VideoCapture(str(self.config.input))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = metadata["fps"] / metadata["frame_step"]
+        
+        # Use VideoResource for better resource management
+        video_resource = VideoResource(self.config.input)
+        video_metadata = video_resource.get_metadata()
+        
+        width = video_metadata["width"]
+        height = video_metadata["height"]
+        fps = metadata.get("fps", video_metadata["fps"]) / metadata.get("frame_step", 1)
+        
+        # Get palette from metadata
+        palette = np.array(metadata.get("palette", []), dtype=np.uint8)
+        if len(palette) == 0 and "palette" in segmentation_dataset.attrs:
+            palette_attr = segmentation_dataset.attrs.get("palette")
+            if isinstance(palette_attr, list):
+                palette = np.array(palette_attr, dtype=np.uint8)
 
         output_base = self.config.get_output_path()
         video_writers = self._initialize_video_writers(width, height, fps)
+        
+        # Get access to the segmentation data
+        segmentation_data = segmentation_dataset.segmentation
+        total_frames = segmentation_data.shape[0]
 
+        # Process in chunks for memory efficiency
         chunk_size = 100  # Adjust this value based on available memory
-        for chunk_start in range(0, len(segmentation_data), chunk_size):
-            chunk_end = min(chunk_start + chunk_size, len(segmentation_data))
-            seg_chunk = get_segmentation_data_batch(
-                segmentation_data, chunk_start, chunk_end
-            )
-
-            frames = self._get_video_frames_batch(
-                cap, chunk_start, chunk_end, metadata["frame_step"]
-            )
-
-        if self.processing_plan.plan.get("generate_colored_video", False):
-            colored_frames = self.visualizer.visualize_segmentation(
-                frames, seg_chunk, metadata["palette"], colored_only=True
-            )
-            for colored_frame in colored_frames:
-                video_writers["colored"].write(
-                    cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
+        for chunk_start in range(0, total_frames, chunk_size):
+            chunk_end = min(chunk_start + chunk_size, total_frames)
+            
+            # Get segmentation data batch using xarray
+            seg_chunk = segmentation_data.isel(time=slice(chunk_start, chunk_end)).values
+            
+            # Get the corresponding video frames
+            frame_indices = list(range(chunk_start, chunk_end))
+            # Map these to actual frame indices in the video using frame_step
+            frame_step = metadata.get("frame_step", 1)
+            video_frame_indices = [idx * int(frame_step) for idx in frame_indices]
+            
+            # Load the frames using VideoResource
+            frames = video_resource.get_frame_batch(video_frame_indices)
+            frames_np = [np.array(frame) for frame in frames]
+            
+            # Generate and write video frames
+            if self.processing_plan.plan.get("generate_colored_video", False):
+                colored_frames = self.visualizer.visualize_segmentation(
+                    frames_np, seg_chunk, palette, colored_only=True
                 )
+                for colored_frame in colored_frames:
+                    video_writers["colored"].write(
+                        cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
+                    )
 
-        if self.processing_plan.plan.get("generate_overlay_video", False):
-            overlay_frames = self.visualizer.visualize_segmentation(
-                frames, seg_chunk, metadata["palette"], colored_only=False
-            )
-            for overlay_frame in overlay_frames:
-                video_writers["overlay"].write(
-                    cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
+            if self.processing_plan.plan.get("generate_overlay_video", False):
+                overlay_frames = self.visualizer.visualize_segmentation(
+                    frames_np, seg_chunk, palette, colored_only=False
                 )
+                for overlay_frame in overlay_frames:
+                    video_writers["overlay"].write(
+                        cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
+                    )
 
+        # Release all resources
         for writer in video_writers.values():
             writer.release()
-
-        cap.release()
+            
         logger.debug(
             f"Video generation completed in {time.time() - start_time:.2f} seconds"
         )
@@ -444,8 +445,8 @@ class VideoProcessor:
 
     def _create_video(
         self,
-        cap: cv2.VideoCapture,
-        segmentation_data: h5py.Dataset,
+        video_path: Path,
+        segmentation_dataset: xr.Dataset,
         metadata: Dict[str, Any],
         output_path: Path,
         colored_only: bool,
@@ -454,47 +455,79 @@ class VideoProcessor:
         Creates a video from segmentation data.
 
         Args:
-            cap (cv2.VideoCapture): Video capture object of the original video.
-            segmentation_data (h5py.Dataset): Segmentation data for all frames.
+            video_path (Path): Path to the original video file.
+            segmentation_dataset (xr.Dataset): Segmentation dataset.
             metadata (Dict[str, Any]): Metadata about the video and segmentation.
             output_path (Path): Path to save the output video.
             colored_only (bool): If True, create colored segmentation; if False, create overlay.
         """
+        # Use VideoResource for better resource management
+        video_resource = VideoResource(video_path)
+        video_metadata = video_resource.get_metadata()
+        
+        # Get palette from metadata
+        palette = np.array(metadata.get("palette", []), dtype=np.uint8)
+        if len(palette) == 0 and "palette" in segmentation_dataset.attrs:
+            palette_attr = segmentation_dataset.attrs.get("palette")
+            if isinstance(palette_attr, list):
+                palette = np.array(palette_attr, dtype=np.uint8)
+                
+        # Setup video writer
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fps = metadata.get("fps", video_metadata["fps"]) / metadata.get("frame_step", 1)
+        width = video_metadata["width"]
+        height = video_metadata["height"]
+        
         out = cv2.VideoWriter(
             str(output_path),
             fourcc,
-            metadata["fps"],
-            (metadata["width"], metadata["height"]),
+            fps,
+            (width, height),
         )
 
-        frame_index = 0
-        seg_index = 0
-        palette = np.array(metadata["palette"], dtype=np.uint8)
-
+        # Get segmentation data
+        segmentation_data = segmentation_dataset.segmentation
+        
+        # Get frame indices based on frame step
+        frame_step = int(metadata.get("frame_step", 1))
+        total_frames = segmentation_data.shape[0]
+        
         with tqdm_context(
-            total=metadata["frame_count"],
+            total=total_frames,
             desc=f"Generating {'colored' if colored_only else 'overlay'} video",
             disable=self.config.disable_tqdm,
         ) as pbar:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                if frame_index % metadata["frame_step"] == 0:
-                    seg_map = segmentation_data[seg_index]
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    visualized = self.visualizer.visualize_segmentation(
-                        frame_rgb, seg_map, palette, colored_only=colored_only
+            # Process in chunks for memory efficiency
+            chunk_size = 100
+            for chunk_start in range(0, total_frames, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, total_frames)
+                
+                # Get segmentation data batch using xarray
+                seg_chunk = segmentation_data.isel(time=slice(chunk_start, chunk_end)).values
+                
+                # Get the corresponding video frames
+                frame_indices = list(range(chunk_start, chunk_end))
+                # Map these to actual frame indices in the video using frame_step
+                video_frame_indices = [idx * frame_step for idx in frame_indices]
+                
+                # Load the frames using VideoResource
+                frames = video_resource.get_frame_batch(video_frame_indices)
+                frames_np = [np.array(frame) for frame in frames]
+                
+                # Generate and write video frames
+                if colored_only:
+                    visualized_frames = self.visualizer.visualize_segmentation(
+                        frames_np, seg_chunk, palette, colored_only=True
                     )
-                    out.write(cv2.cvtColor(visualized, cv2.COLOR_RGB2BGR))
-                    seg_index += 1
                 else:
-                    out.write(frame)
-
-                frame_index += 1
-                pbar.update(1)
+                    visualized_frames = self.visualizer.visualize_segmentation(
+                        frames_np, seg_chunk, palette, colored_only=False
+                    )
+                    
+                for visualized in visualized_frames:
+                    out.write(cv2.cvtColor(visualized, cv2.COLOR_RGB2BGR))
+                    
+                pbar.update(len(frames_np))
 
         out.release()
         logger.info(
@@ -671,8 +704,16 @@ class DirectoryProcessor:
         logger.debug("Video config created", video_config=video_config)
 
         try:
+            # We can either use the SegmentationProcessor or directly the workflow
+            # Using SegmentationProcessor for compatibility with existing code
             processor = SegmentationProcessor(video_config)
             processor.process()
+            
+            # Alternative direct workflow approach:
+            # workflow = create_workflow(video_config)
+            # result = workflow.process()
+            # if 'error' in result:
+            #     raise ProcessingError(f"Error in workflow: {result['error']}")
         except Exception as e:
             self.logger.error(
                 "Error in video processing", video_file=str(video_file), error=str(e)
