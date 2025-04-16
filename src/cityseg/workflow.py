@@ -14,7 +14,7 @@ import xarray as xr
 from PIL import Image
 from loguru import logger
 from hamilton import driver
-from hamilton.function_modifiers import extract_columns, parameterize, config
+from hamilton.function_modifiers import parameterize
 
 from .config import Config, ModelConfig
 from .pipeline import create_segmentation_pipeline
@@ -37,47 +37,46 @@ def video_metadata(video_path: str) -> Dict[str, Any]:
     return video_resource.get_metadata()
 
 
-@extract_columns(dict_path='video_metadata')
-def frame_count(frame_count: int) -> int:
+def frame_count(video_metadata: Dict[str, Any]) -> int:
     """
     Extract the frame count from video metadata.
     
     Args:
-        frame_count (int): Frame count from the metadata.
+        video_metadata (Dict[str, Any]): Video metadata dictionary.
         
     Returns:
         int: Frame count.
     """
-    return frame_count
+    return video_metadata["frame_count"]
 
 
-@extract_columns(dict_path='video_metadata')
-def fps(fps: float) -> float:
+def fps(video_metadata: Dict[str, Any]) -> float:
     """
     Extract frames per second from video metadata.
     
     Args:
-        fps (float): Frames per second from the metadata.
+        video_metadata (Dict[str, Any]): Video metadata dictionary.
         
     Returns:
         float: Frames per second.
     """
-    return fps
+    return video_metadata["fps"]
 
 
-@extract_columns(dict_path='video_metadata')
-def video_dimensions(width: int, height: int) -> Dict[str, int]:
+def video_dimensions(video_metadata: Dict[str, Any]) -> Dict[str, int]:
     """
     Extract video dimensions from metadata.
     
     Args:
-        width (int): Video width from the metadata.
-        height (int): Video height from the metadata.
+        video_metadata (Dict[str, Any]): Video metadata dictionary.
         
     Returns:
         Dict[str, int]: Dictionary with video dimensions.
     """
-    return {"width": width, "height": height}
+    return {
+        "width": video_metadata["width"], 
+        "height": video_metadata["height"]
+    }
 
 
 def frame_indices(frame_count: int, frame_step: int) -> List[int]:
@@ -109,7 +108,6 @@ def video_frames(video_path: str, frame_indices: List[int]) -> List[Image.Image]
     return video_resource.get_frame_batch(frame_indices)
 
 
-@config('model')
 def segmentation_pipeline(
     model: Dict[str, Any]
 ) -> Any:
@@ -275,35 +273,16 @@ class CitysegWorkflow:
         Returns:
             driver.Driver: Hamilton driver.
         """
-        modules = [
-            sys.modules[__name__]  # This module contains the workflow functions
-        ]
+        # Use the current module as the dataflow module
+        module = sys.modules[__name__]
         
-        # Create appropriate adapter for caching if needed
-        adapter = None
-        if self.cache_dir is not None:
-            try:
-                from hamilton.experimental.h_cache import CacheManager
-                
-                # Setup cache manager
-                cache_manager = CacheManager(
-                    cache_dir=str(self.cache_dir),
-                    eager_mode=False,  # Only cache when requested
-                    strategy='overwrite'  # Overwrite existing cache
-                )
-                
-                # Configure cache for specific functions
-                cache_config = {
-                    'segmentation_maps': True,  # Cache this function's outputs
-                    'video_frames': True,       # Cache frames
-                }
-                
-                adapter = cache_manager.build_cache_adapter(cache_config)
-                logger.info(f"Caching enabled for workflow, using directory: {self.cache_dir}")
-            except ImportError:
-                logger.warning("Hamilton caching not available, proceeding without cache")
+        # Create driver directly with the module
+        driver_instance = driver.Driver({}, module)
         
-        return driver.Driver(modules, adapter=adapter)
+        # Log creation
+        logger.info(f"Created Hamilton driver with module: {module.__name__}")
+        
+        return driver_instance
     
     def process_video(self) -> Dict[str, Any]:
         """

@@ -3,7 +3,7 @@ name = "cityseg"
 version = "0.3.1dev3"
 description = "A flexible and efficient semantic segmentation pipeline for processing images and videos"
 authors = [
-    { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" }
+    { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" },
 ]
 dependencies = [
     "torch>=2.4.0",
@@ -21,7 +21,8 @@ dependencies = [
     "xarray>=2023.10.0",
     "zarr>=2.15.0",
     "pyarrow>=14.0.0",
-    "hamilton>=2.2.0",
+    "sf-hamilton[lsp,sdk,ui]>=1.88.0",
+    "dask>=2025.3.0",
 ]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,19 +43,13 @@ allow-direct-references = true
 packages = ["src/cityseg"]
 
 [dependency-groups]
-dev = [
-    "jupyter>=1.1.1",
-    "rich>=13.9.4",
-]
+dev = ["jupyter>=1.1.1", "rich>=13.9.4"]
 docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.5.44",
     "mkdocstrings[python]>=0.27.0",
 ]
-test = [
-    "pytest>=8.3.3",
-    "pytest-cov>=6.0.0",
-]
+test = ["pytest>=8.3.3", "pytest-cov>=6.0.0"]
 
 [tool.pytest.ini_options]
 addopts = "-v --tb=short --durations=5 --cov=src/cityseg --cov-report=term"
@@ -68,15 +63,11 @@ markers = [
     "skip: mark test as skipped",
     "skipif: mark test as skipped if condition is met",
     "xfail: mark test as expected to fail",
-    "parametrize: mark test as parametrized"
+    "parametrize: mark test as parametrized",
 ]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    "*.hdf5",
-    "docs/tutorials",
-    "docs/img"
-]
+exclude = ["*.hdf5", "docs/tutorials", "docs/img"]
 
 [tool.bumpver]
 current_version = "v0.3.1rc0"
@@ -92,9 +83,7 @@ push = true
     '^current_version = "{version}"',
     '^version = "{pep440_version}"',
 ]
-"src/cityseg/__init__.py" = [
-    '^__version__ = "{pep440_version}"',
-]
+"src/cityseg/__init__.py" = ['^__version__ = "{pep440_version}"']
 
 
 [project.scripts]

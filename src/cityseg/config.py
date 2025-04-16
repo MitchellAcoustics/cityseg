@@ -43,6 +43,23 @@ class ModelConfig:
     dataset: Optional[str] = None
     num_workers: Optional[int] = 8
     pipe_batch: Optional[int] = 1
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the ModelConfig to a dictionary.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the ModelConfig.
+        """
+        return {
+            "name": self.name,
+            "model_type": self.model_type,
+            "max_size": self.max_size,
+            "device": self.device,
+            "dataset": self.dataset,
+            "num_workers": self.num_workers,
+            "pipe_batch": self.pipe_batch,
+        }
 
     def __post_init__(self):
         """
