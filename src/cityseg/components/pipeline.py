@@ -65,28 +65,40 @@ class SegmentationPipeline(ImageSegmentationPipeline):
         return None
 
     def create_single_segmentation_map(
-        self, annotations: list[dict[str, object]], target_size: tuple
-    ) -> dict[str, object]:
+        self, result: list[dict[str, object]], target_size: tuple[int, int]
+    ) -> dict[str, np.ndarray | object]:
         """
-        Create a single segmentation map from annotations.
+        Create a single segmentation map from model outputs.
 
         Args:
-            annotations: List of annotation dictionaries.
-            target_size: The target size of the segmentation map.
+            result: List of prediction dictionaries from the model
+            target_size: The target size (height, width) of the segmentation map
 
         Returns:
-            A dictionary containing the segmentation map and associated metadata.
+            A dictionary containing the segmentation map and associated metadata
         """
         seg_map = np.zeros(target_size, dtype=np.int32)
-        for annotation in annotations:
-            mask = np.array(annotation["mask"])
-            label_id = self.model.config.label2id[str(annotation["label"])]
-            seg_map[mask != 0] = label_id
+
+        # Handle different model output formats
+        for pred in result:
+            if isinstance(pred, dict):
+                if "mask" in pred and "label" in pred:
+                    mask = np.array(pred["mask"])
+                    label = pred["label"]
+                    if isinstance(label, str) and hasattr(
+                        self.model.config, "label2id"
+                    ):
+                        label_id = self.model.config.label2id.get(label, 0)
+                    elif isinstance(label, (int, np.integer)):
+                        label_id = int(label)
+                    else:
+                        continue
+                    seg_map[mask != 0] = label_id
 
         return {
             "seg_map": seg_map,
-            "label2id": self.model.config.label2id,
-            "id2label": self.model.config.id2label,
+            "label2id": getattr(self.model.config, "label2id", {}),
+            "id2label": getattr(self.model.config, "id2label", {}),
             "palette": self.palette,
         }
 
@@ -131,19 +143,44 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             A list of dictionaries containing segmentation maps and metadata.
         """
         result = super().__call__(images, subtask="semantic", **kwargs)
+
+        def get_mask_size(prediction: dict[str, object]) -> tuple[int, int]:
+            """Helper to safely extract mask size from prediction"""
+            if not isinstance(prediction, dict):
+                return (0, 0)
+            mask = prediction.get("mask")
+            if mask is None:
+                return (0, 0)
+            if hasattr(mask, "size"):
+                size = getattr(mask, "size")
+                if isinstance(size, (tuple, list)) and len(size) >= 2:
+                    return (int(size[1]), int(size[0]))  # Convert to (height, width)
+            if isinstance(mask, np.ndarray):
+                if mask.ndim >= 2:
+                    return (int(mask.shape[0]), int(mask.shape[1]))
+            return (0, 0)
+
+        def ensure_list_dict(result: object) -> list[dict[str, object]]:
+            """Helper to ensure result is a list of dicts"""
+            if isinstance(result, dict):
+                return [result]
+            if isinstance(result, list):
+                return [r for r in result if isinstance(r, dict)]
+            return []
+
         if self._is_single_image_result(result):
-            return [
-                self.create_single_segmentation_map(
-                    result, result[0]["mask"].size[::-1]
-                )
-            ]
+            predictions = ensure_list_dict(result)
+            if predictions:
+                size = get_mask_size(predictions[0])
+                return [self.create_single_segmentation_map(predictions, size)]
+            return [self.create_single_segmentation_map([], (0, 0))]
         else:
-            return [
-                self.create_single_segmentation_map(
-                    img_result, img_result[0]["mask"].size[::-1]
-                )
-                for img_result in result
-            ]
+            outputs = []
+            for img_result in result:
+                predictions = ensure_list_dict(img_result)
+                size = get_mask_size(predictions[0]) if predictions else (0, 0)
+                outputs.append(self.create_single_segmentation_map(predictions, size))
+            return outputs
 
 
 @logger.catch

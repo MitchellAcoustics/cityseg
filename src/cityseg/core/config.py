@@ -161,13 +161,30 @@ class Config:
         Raises:
             ValueError: If the input path does not exist.
         """
-        # Always convert input to Path
+        # Convert input to Path if it's a string
         if not isinstance(self.input, Path):
             self.input = Path(self.input)
         if not self.input.exists():
             raise ValueError(f"Input path does not exist: {self.input}")
         self.input_type = self._determine_input_type()
         self.ignore_files = self.ignore_files or []
+
+    @property
+    def input_path(self) -> Path:
+        """
+        Return the input path, guaranteed to be a Path object.
+
+        This property ensures type checkers understand that
+        the value is always a Path object after initialization.
+
+        Returns:
+            Path: The input path as a Path object
+        """
+        # We know self.input is a Path after __post_init__, but the type checker doesn't
+        # Use typing.cast to tell the type checker this is definitely a Path
+        from typing import cast
+
+        return cast(Path, self.input)
 
     def _determine_input_type(self) -> InputType:
         """
@@ -179,11 +196,16 @@ class Config:
         Raises:
             ValueError: If the input type is not supported.
         """
-        if self.input.is_dir():
+        # Use typing.cast to tell the type checker this is definitely a Path
+        from typing import cast
+
+        input_path = cast(Path, self.input)
+
+        if input_path.is_dir():
             return InputType.DIRECTORY
-        elif self.input.suffix.lower() in [".mp4", ".avi", ".mov"]:
+        elif input_path.suffix.lower() in [".mp4", ".avi", ".mov"]:
             return InputType.SINGLE_VIDEO
-        elif self.input.suffix.lower() in [
+        elif input_path.suffix.lower() in [
             ".jpg",
             ".jpeg",
             ".png",
@@ -193,7 +215,7 @@ class Config:
         ]:
             return InputType.SINGLE_IMAGE
         else:
-            raise ValueError(f"Unsupported input type: {self.input}")
+            raise ValueError(f"Unsupported input type: {input_path}")
 
     def generate_output_prefix(self) -> str:
         """
@@ -202,10 +224,15 @@ class Config:
         Returns:
             str: The generated output prefix.
         """
+        # Use typing.cast to tell the type checker this is definitely a Path
+        from typing import cast
+
+        input_path = cast(Path, self.input)
+
         if self.input_type == InputType.DIRECTORY:
-            name = self.input.name
+            name = input_path.name
         else:
-            name = self.input.stem
+            name = input_path.stem
 
         model_name = self.model.name.split("/")[-1]
         base_name = f"{name}_{model_name}_step{self.frame_step}"
@@ -222,10 +249,15 @@ class Config:
         Returns:
             Path: The full output path.
         """
+        # Use typing.cast to tell the type checker this is definitely a Path
+        from typing import cast
+
+        input_path = cast(Path, self.input)
+
         if self.output_dir is None:
-            self.output_dir = self.input.parent / "output"
+            self.output_dir = input_path.parent / "output"
         elif not Path(self.output_dir).is_absolute():
-            self.output_dir = self.input.parent / self.output_dir
+            self.output_dir = input_path.parent / self.output_dir
 
         self.output_dir = self.output_dir.resolve()
 
@@ -241,7 +273,7 @@ class Config:
 
         prefix = self.output_prefix or self.generate_output_prefix()
         if self.input_type == InputType.SINGLE_IMAGE:
-            return self.output_dir / f"{prefix}{self.input.suffix}"
+            return self.output_dir / f"{prefix}{input_path.suffix}"
         else:  # SINGLE_VIDEO
             return self.output_dir / f"{prefix}.mp4"
 

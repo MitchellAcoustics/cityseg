@@ -43,7 +43,7 @@ class ImageProcessorLegacy:
         Raises:
             ProcessingError: If an error occurs during processing
         """
-        logger.info(f"Processing image: {self.config.input}")
+        logger.info(f"Processing image: {self.config.input_path}")
         try:
             # Use the Hamilton driver to process the image
             result = hamilton_process(self.config)
@@ -69,10 +69,10 @@ class ImageProcessorLegacy:
         Raises:
             ProcessingError: If an error occurs during processing
         """
-        logger.info(f"Processing image directly: {self.config.input}")
+        logger.info(f"Processing image directly: {self.config.input_path}")
         try:
             # Load and resize image
-            image = ImageProcessor.load_image(self.config.input)
+            image = ImageProcessor.load_image(self.config.input_path)
             resized_image = ImageProcessor.resize_image(
                 image, self.config.model.max_size
             )
@@ -136,7 +136,7 @@ class VideoProcessorLegacy:
         Raises:
             ProcessingError: If an error occurs during processing
         """
-        logger.info(f"Processing video: {self.config.input}")
+        logger.info(f"Processing video: {self.config.input_path}")
         try:
             # Use the Hamilton driver to process the video
             result = hamilton_process(self.config)
@@ -162,16 +162,16 @@ class VideoProcessorLegacy:
         Raises:
             ProcessingError: If an error occurs during processing
         """
-        logger.info(f"Processing video directly: {self.config.input}")
+        logger.info(f"Processing video directly: {self.config.input_path}")
         try:
             # Get video metadata and frame indices
-            video_metadata = VideoProcessor.get_metadata(self.config.input)
+            video_metadata = VideoProcessor.get_metadata(self.config.input_path)
             frame_indices = VideoProcessor.get_frame_indices(
                 video_metadata["frame_count"], self.config.frame_step
             )
 
             # Extract frames
-            frames = VideoProcessor.get_frames(self.config.input, frame_indices)
+            frames = VideoProcessor.get_frames(self.config.input_path, frame_indices)
 
             # Resize frames if needed
             resized_frames = [
@@ -241,7 +241,7 @@ class DirectoryProcessorLegacy:
         Raises:
             ProcessingError: If an error occurs during processing
         """
-        logger.info(f"Processing directory: {self.config.input}")
+        logger.info(f"Processing directory: {self.config.input_path}")
         try:
             # Use the Hamilton driver to process the directory
             result = hamilton_process(self.config)
@@ -267,13 +267,13 @@ class DirectoryProcessorLegacy:
         Raises:
             ProcessingError: If an error occurs during processing
         """
-        logger.info(f"Processing directory directly: {self.config.input}")
+        logger.info(f"Processing directory directly: {self.config.input_path}")
         try:
             from ..components.video import VideoFileIterator
 
             # Get all video files
             video_iterator = VideoFileIterator(
-                self.config.input, self.config.ignore_files
+                self.config.input_path, self.config.ignore_files
             )
             video_files = list(video_iterator)
 

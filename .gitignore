@@ -29,3 +29,4 @@ docs/demos/outputs/
 
 *.hdf5
 .coverage*
+site/

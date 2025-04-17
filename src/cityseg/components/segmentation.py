@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image
 from loguru import logger
-from typing import Callable
+from collections.abc import Callable
 
 from ..core import ModelConfig
 from .pipeline import create_segmentation_pipeline
@@ -118,7 +118,8 @@ class SegmentationProcessor:
         Returns:
             List of segmentation maps as numpy arrays
         """
-        return [result["seg_map"] for result in results]
+        # Type hint to help Python understand seg_map is always np.ndarray
+        return [np.asarray(result["seg_map"]) for result in results]
 
     @staticmethod
     def extract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
