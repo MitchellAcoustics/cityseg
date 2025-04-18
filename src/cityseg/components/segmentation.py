@@ -10,10 +10,13 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image
 from loguru import logger
-from collections.abc import Callable
 
 from ..core import ModelConfig
-from .pipeline import create_segmentation_pipeline
+from .pipeline import (
+    create_segmentation_pipeline,
+    SegmentationPipeline,
+    SegmentationResult,
+)
 
 
 class SegmentationProcessor:
@@ -32,7 +35,7 @@ class SegmentationProcessor:
     """
 
     @staticmethod
-    def create_pipeline(model_config: ModelConfig) -> object:
+    def create_pipeline(model_config: ModelConfig) -> "SegmentationPipeline":
         """
         Create a segmentation pipeline from a model configuration.
 
@@ -40,7 +43,7 @@ class SegmentationProcessor:
             model_config: Model configuration object
 
         Returns:
-            Segmentation pipeline
+            Segmentation pipeline callable that takes a list of images and returns a list of result dictionaries
         """
         logger.debug(f"Creating segmentation pipeline for model: {model_config.name}")
         return create_segmentation_pipeline(model_config)
@@ -48,8 +51,8 @@ class SegmentationProcessor:
     @staticmethod
     def process_image(
         image: Image.Image,
-        pipeline: Callable[[list[Image.Image]], list[dict[str, object]]],
-    ) -> dict[str, object]:
+        pipeline: SegmentationPipeline,
+    ) -> SegmentationResult:
         """
         Apply segmentation to a single image.
 
@@ -61,14 +64,15 @@ class SegmentationProcessor:
             Dictionary containing segmentation result
         """
         logger.debug("Processing single image through segmentation pipeline")
-        results = pipeline([image])
+        # Get standard pipeline results and transform to our custom format
+        results = pipeline.process_results(pipeline([image]))
         return results[0]
 
     @staticmethod
     def process_batch(
         images: list[Image.Image],
-        pipeline: Callable[[list[Image.Image]], list[dict[str, object]]],
-    ) -> list[dict[str, object]]:
+        pipeline: SegmentationPipeline,
+    ) -> list[SegmentationResult]:
         """
         Apply segmentation to a batch of images.
 
@@ -87,28 +91,31 @@ class SegmentationProcessor:
             f"Processing batch of {len(images)} images through segmentation pipeline"
         )
         try:
-            return pipeline(images)
+            # Get standard pipeline results and transform to our custom format
+            return pipeline.process_results(pipeline(images))
         except Exception as e:
             logger.error(f"Error during batch segmentation: {str(e)}")
             # For testing/fallback, return empty segmentation maps
             if images:
                 sample_image = np.array(images[0])
                 height, width = sample_image.shape[:2]
-                dummy_results = []
+                dummy_results: list[SegmentationResult] = []
                 for _ in images:
-                    dummy_results.append(
-                        {
-                            "seg_map": np.zeros((height, width), dtype=np.uint8),
-                            "label2id": {},
-                            "id2label": {},
-                            "palette": None,
-                        }
-                    )
+                    # Explicitly create a SegmentationResult
+                    dummy_result: SegmentationResult = {
+                        "seg_map": np.zeros((height, width), dtype=np.uint8),
+                        "label2id": {},
+                        "id2label": {},
+                        "palette": None,
+                    }
+                    dummy_results.append(dummy_result)
                 return dummy_results
             return []
 
     @staticmethod
-    def extract_segmentation_maps(results: list[dict[str, object]]) -> list[np.ndarray]:
+    def extract_segmentation_maps(
+        results: list[SegmentationResult],
+    ) -> list[np.ndarray]:
         """
         Extract segmentation maps from segmentation results.
 
@@ -122,7 +129,7 @@ class SegmentationProcessor:
         return [np.asarray(result["seg_map"]) for result in results]
 
     @staticmethod
-    def extract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
+    def extract_metadata(results: list[SegmentationResult]) -> dict[str, object]:
         """
         Extract metadata from segmentation results.
 

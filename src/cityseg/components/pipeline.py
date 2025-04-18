@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
+from typing import Any, TypedDict
 
 import numpy as np
 import torch
@@ -27,7 +28,32 @@ from transformers import (
     SegformerForSemanticSegmentation,
 )
 
+from cityseg.analysis.visualization import Palette
 from ..core import ModelConfig
+
+# Define types to match transformers library
+Prediction = dict[str, Any]
+Predictions = list[Prediction]
+
+
+class SegmentationResult(TypedDict):
+    """
+    A typed dictionary representing the result of a segmentation operation.
+
+    This provides a clear structure for the segmentation results, making
+    it easier to work with and understand the data.
+
+    Attributes:
+        seg_map: The segmentation map as a numpy array.
+        label2id: A dictionary mapping label names to their IDs.
+        id2label: A dictionary mapping IDs to their label names.
+        palette: The color palette used for visualization.
+    """
+
+    seg_map: np.ndarray
+    label2id: dict[str, int]
+    id2label: dict[str, str]
+    palette: Palette | np.ndarray | None
 
 
 class SegmentationPipeline(ImageSegmentationPipeline):
@@ -66,7 +92,7 @@ class SegmentationPipeline(ImageSegmentationPipeline):
 
     def create_single_segmentation_map(
         self, result: list[dict[str, object]], target_size: tuple[int, int]
-    ) -> dict[str, np.ndarray | object]:
+    ) -> SegmentationResult:
         """
         Create a single segmentation map from model outputs.
 
@@ -131,18 +157,36 @@ class SegmentationPipeline(ImageSegmentationPipeline):
             return False
         raise ValueError("Unexpected result structure")
 
-    def __call__(self, images, **kwargs) -> list[dict[str, object]]:  # type: ignore
+    def __call__(self, images=None, **kwargs) -> Predictions | list[Prediction]:
         """
-        Process the input image(s) and create segmentation map(s).
+        Process the input image(s) through the original pipeline.
+
+        This maintains compatibility with the parent class by returning the same type.
 
         Args:
             images: The input image(s) to process.
             **kwargs: Additional keyword arguments.
 
         Returns:
+            The original pipeline results in the format expected by the parent class.
+        """
+        # Call the parent implementation with semantic segmentation
+        return super().__call__(images, subtask="semantic", **kwargs)
+
+    def process_results(
+        self, result: Predictions | list[Prediction]
+    ) -> list[SegmentationResult]:
+        """
+        Transform the standard pipeline results into our custom SegmentationResult format.
+
+        This separates the processing logic from the __call__ method.
+
+        Args:
+            result: The result from the original pipeline.
+
+        Returns:
             A list of dictionaries containing segmentation maps and metadata.
         """
-        result = super().__call__(images, subtask="semantic", **kwargs)
 
         def get_mask_size(prediction: dict[str, object]) -> tuple[int, int]:
             """Helper to safely extract mask size from prediction"""

@@ -303,6 +303,9 @@ class ParquetAnalysisStorage:
                     if hasattr(data_array, "isel")
                     else data_array[frame_idx]
                 )
+                # Ensure frame is a numpy array
+                if not isinstance(frame, np.ndarray):
+                    frame = np.array(frame)
                 frame_stats = self._analyze_frame(frame, frame_idx)
                 all_stats.extend(frame_stats)
         else:
@@ -325,7 +328,7 @@ class ParquetAnalysisStorage:
 
     def _analyze_frame(
         self, frame: np.ndarray, frame_idx: int
-    ) -> list[dict[str, object]]:
+    ) -> list[dict[str, float]]:
         """
         Analyze a single frame and return statistics.
 
@@ -334,7 +337,7 @@ class ParquetAnalysisStorage:
             frame_idx (int): Frame index.
 
         Returns:
-            list[dict[str, object]]: List of statistics dictionaries.
+            list[dict[str, float]]: List of statistics dictionaries.
         """
         # Count pixels per category
         unique_values, counts = np.unique(frame, return_counts=True)
@@ -542,8 +545,24 @@ class StorageFactory:
         Returns:
             SegmentationStorage: Appropriate segmentation storage adapter.
         """
-        # For now, we're using Zarr for all segmentation storage
-        return ZarrSegmentationStorage()
+        # Check for storage type in config (if available)
+        storage_type = getattr(config, "storage_type", "zarr")
+
+        if storage_type == "lance":
+            try:
+                from .lance_storage import LanceSegmentationStorage
+
+                return LanceSegmentationStorage()
+            except ImportError:
+                logger.warning(
+                    "Lance storage requested but not available. "
+                    "Falling back to Zarr storage. Install lance with: "
+                    "pip install pylance pyarrow"
+                )
+                return ZarrSegmentationStorage()
+        else:
+            # Default to Zarr
+            return ZarrSegmentationStorage()
 
     @staticmethod
     def create_analysis_storage(config: Config) -> ParquetAnalysisStorage:

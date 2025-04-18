@@ -2,6 +2,7 @@
 This module provides functionality for processing video files and directories.
 
 It includes classes and utilities for:
+
 1. Video resource management with proper context handling (VideoResource)
 2. Video processing, frame extraction, and metadata handling (VideoProcessor)
 3. Iterating over video files in a directory (VideoFileIterator)
@@ -10,10 +11,27 @@ It includes classes and utilities for:
 from __future__ import annotations
 from pathlib import Path
 from collections.abc import Iterator
+from typing import TypedDict, NotRequired
 
 import cv2
 from PIL import Image
 from loguru import logger
+
+
+class VideoMetadata(TypedDict):
+    """TypedDict for video metadata with properly typed fields."""
+
+    # Fields are required by default
+    frame_count: int
+    fps: float
+    width: int
+    height: int
+
+    # Optional fields that may not be present in all contexts
+    codec: NotRequired[str]
+    frame_step: NotRequired[
+        int | None
+    ]  # Optional field, often added later in the pipeline
 
 
 class VideoResource:
@@ -35,7 +53,7 @@ class VideoResource:
             video_path (Path): Path to the video file.
         """
         self.video_path = str(video_path)
-        self._cap = None
+        self._cap: cv2.VideoCapture | None = None
 
     def __enter__(self) -> cv2.VideoCapture:
         """
@@ -67,20 +85,21 @@ class VideoResource:
             self._cap.release()
             self._cap = None
 
-    def get_metadata(self) -> dict[str, object]:
+    def get_metadata(self) -> VideoMetadata:
         """
         Get video metadata without keeping the resource open.
 
         Returns:
-            dict[str, object]: Video metadata including frame count, fps, width, and height.
+            VideoMetadata: Video metadata including frame count, fps, width, and height.
         """
         with self as cap:
-            metadata = {
+            metadata: VideoMetadata = {
                 "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-                "fps": cap.get(cv2.CAP_PROP_FPS),
+                "fps": float(cap.get(cv2.CAP_PROP_FPS)),
                 "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
                 "codec": self._get_codec(cap),
+                "frame_step": None,  # Initialized as None, can be set later
             }
         return metadata
 
@@ -115,7 +134,7 @@ class VideoResource:
         Returns:
             list[Image.Image]: List of PIL Image objects for the requested frames.
         """
-        frames = []
+        frames: list[Image.Image] = []
         with self as cap:
             for idx in indices:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
@@ -143,7 +162,7 @@ class VideoResource:
         Returns:
             list[Image.Image]: List of PIL Image objects for the captured frames.
         """
-        frames = []
+        frames: list[Image.Image] = []
         with self as cap:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             frame_count = 0
@@ -227,7 +246,7 @@ class VideoProcessor:
     """
 
     @staticmethod
-    def get_metadata(video_path: Path) -> dict[str, object]:
+    def get_metadata(video_path: Path) -> VideoMetadata:
         """
         Extract metadata from a video file.
 
@@ -235,7 +254,7 @@ class VideoProcessor:
             video_path: Path to the video file
 
         Returns:
-            Dictionary containing metadata like dimensions, frame count, fps
+            VideoMetadata: Dictionary containing metadata like dimensions, frame count, fps
         """
         resource = VideoResource(video_path)
         return resource.get_metadata()

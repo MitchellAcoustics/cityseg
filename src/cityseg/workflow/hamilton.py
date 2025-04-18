@@ -17,7 +17,7 @@ from PIL import Image
 from hamilton import driver, function_modifiers as fm
 from loguru import logger
 
-from ..components.video import VideoProcessor
+from ..components.video import VideoProcessor, VideoMetadata
 from ..components.image import ImageProcessor
 from ..components.segmentation import SegmentationProcessor
 from ..components.dataset import DatasetBuilder
@@ -164,7 +164,7 @@ def process(config: Config, cache_dir: Path | None = None) -> dict[str, object]:
 # --- Video Processing Functions ---
 
 
-def video_metadata(video_path: str) -> dict[str, object]:
+def video_metadata(video_path: str) -> VideoMetadata:
     """
     Video metadata extracted from the video file.
 
@@ -172,13 +172,13 @@ def video_metadata(video_path: str) -> dict[str, object]:
         video_path: Path to the video file
 
     Returns:
-        Metadata about the video including dimensions, frame count, and fps
+        VideoMetadata: Metadata about the video including dimensions, frame count, and fps
     """
     return VideoProcessor.get_metadata(Path(video_path))
 
 
 @fm.config.when(source="video_metadata")
-def frame_count(video_metadata: dict[str, object]) -> int:
+def frame_count(video_metadata: VideoMetadata) -> int:
     """
     Number of frames in the video.
 
@@ -206,7 +206,7 @@ def frame_indices(frame_count: int, frame_step: int) -> list[int]:
 
 
 @fm.config.when(source="video_metadata")
-def video_dimensions(video_metadata: dict[str, object]) -> tuple[int, int]:
+def video_dimensions(video_metadata: VideoMetadata) -> tuple[int, int]:
     """
     Dimensions of the video frames (width, height).
 
@@ -333,7 +333,7 @@ def segmentation_metadata(
 
 def segmentation_dataset(
     segmentation_maps: list[np.ndarray],
-    video_metadata: dict[str, object],
+    video_metadata: VideoMetadata,
     frame_indices: list[int],
     model_metadata: dict[str, object],
     segmentation_metadata: dict[str, object],
@@ -423,7 +423,7 @@ def overlay_images(
 
 def save_overlay_video(
     overlay_images: list[np.ndarray],
-    video_metadata: dict[str, object],
+    video_metadata: VideoMetadata,
     output_path: str,
 ) -> Path:
     """
@@ -445,7 +445,7 @@ def save_overlay_video(
 
     # Determine video properties
     height, width = overlay_images[0].shape[:2]
-    fps = video_metadata.get("fps", 30)
+    fps = video_metadata["fps"]
 
     # Create video writer
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")

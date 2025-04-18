@@ -283,6 +283,7 @@ class DirectoryProcessorLegacy:
                 video_config = Config(
                     input=video_file,
                     output_dir=self.config.output_dir,
+                    output_prefix=self.config.output_prefix,
                     model=self.config.model,
                     frame_step=self.config.frame_step,
                     batch_size=self.config.batch_size,

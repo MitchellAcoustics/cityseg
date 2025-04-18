@@ -43,7 +43,14 @@ allow-direct-references = true
 packages = ["src/cityseg"]
 
 [dependency-groups]
-dev = ["jupyter>=1.1.1", "rich>=13.9.4"]
+dev = [
+    "jupyter>=1.1.1",
+    "mypy>=1.15.0",
+    "pandas-stubs>=2.2.3.250308",
+    "rich>=13.9.4",
+    "types-pyyaml>=6.0.12.20250402",
+    "types-tqdm>=4.67.0.20250404",
+]
 docs = [
     "matplotlib>=3.10.1",
     "mkdocs>=1.6.1",
@@ -91,3 +98,8 @@ push = true
 
 [project.scripts]
 cityseg = "cityseg.main:main"
+
+[project.optional-dependencies]
+lance = [
+    "pylance>=0.25.2",
+]

@@ -7,6 +7,7 @@ progress tracking, and logging setup.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import sys
 from contextlib import contextmanager
 
@@ -125,6 +126,7 @@ def get_palette(name_or_path: str | None = None) -> list[tuple[int, int, int]]:
     Returns:
         list[tuple[int, int, int]]: List of RGB tuples representing the color palette.
     """
+    # TODO: Consider how this interacts with Palette class in visualization.py
     # Handle direct palette names
     if name_or_path == "cityscapes" or (name_or_path and "cityscapes" in name_or_path):
         return CITYSCAPES_PALETTE
@@ -154,7 +156,7 @@ def get_palette(name_or_path: str | None = None) -> list[tuple[int, int, int]]:
 
 
 @contextmanager
-def tqdm_context(*args: object, **kwargs: object) -> tqdm:
+def tqdm_context(*args: object, **kwargs: object) -> Iterator[tqdm]:
     """
     A context manager for tqdm progress bars.
 
@@ -168,11 +170,13 @@ def tqdm_context(*args: object, **kwargs: object) -> tqdm:
     Yields:
         tqdm: The tqdm progress bar object.
     """
+    progress_bar = None
     try:
         progress_bar = tqdm(*args, **kwargs)
         yield progress_bar
     finally:
-        progress_bar.close()
+        if progress_bar is not None:
+            progress_bar.close()
 
 
 def setup_logging(log_level: str, verbose: bool = False) -> None:

@@ -14,6 +14,7 @@ import xarray as xr
 from loguru import logger
 
 from ..storage.storage import ZarrSegmentationStorage, ParquetAnalysisStorage
+from ..components.video import VideoMetadata
 
 
 class DatasetBuilder:
@@ -33,7 +34,7 @@ class DatasetBuilder:
     @staticmethod
     def create_video_dataset(
         segmentation_maps: list[np.ndarray],
-        video_metadata: dict[str, object],
+        video_metadata: VideoMetadata,
         frame_indices: list[int],
         model_metadata: dict[str, object],
         segmentation_metadata: dict[str, object] | None = None,

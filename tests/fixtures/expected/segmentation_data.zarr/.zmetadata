@@ -1,0 +1,142 @@
+{
+    "metadata": {
+        ".zattrs": {
+            "frame_step": 1,
+            "id2label": {
+                "0": "road",
+                "1": "sidewalk",
+                "10": "sky",
+                "11": "person",
+                "12": "rider",
+                "13": "car",
+                "14": "truck",
+                "15": "bus",
+                "16": "train",
+                "17": "motorcycle",
+                "18": "bicycle",
+                "2": "building",
+                "3": "wall",
+                "4": "fence",
+                "5": "pole",
+                "6": "traffic light",
+                "7": "traffic sign",
+                "8": "vegetation",
+                "9": "terrain"
+            },
+            "input_file": "/Users/mitch/Documents/GitHub/cityseg/example_inputs/EustonTap-Screenshot1.png",
+            "model": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+            "model_type": "segformer",
+            "original_size": "1833x857"
+        },
+        ".zgroup": {
+            "zarr_format": 2
+        },
+        "segmentation/.zarray": {
+            "chunks": [
+                1,
+                256,
+                256
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 3,
+                "cname": "zstd",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i4",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                1,
+                299,
+                640
+            ],
+            "zarr_format": 2
+        },
+        "segmentation/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time",
+                "y",
+                "x"
+            ]
+        },
+        "time/.zarray": {
+            "chunks": [
+                1
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                1
+            ],
+            "zarr_format": 2
+        },
+        "time/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ]
+        },
+        "x/.zarray": {
+            "chunks": [
+                640
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                640
+            ],
+            "zarr_format": 2
+        },
+        "x/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "x"
+            ]
+        },
+        "y/.zarray": {
+            "chunks": [
+                299
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                299
+            ],
+            "zarr_format": 2
+        },
+        "y/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "y"
+            ]
+        }
+    },
+    "zarr_consolidated_format": 1
+}
