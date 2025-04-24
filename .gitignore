@@ -28,3 +28,5 @@ scripts/
 .coverage
 /site/
 /docs/demos/outputs/
+.coverage*
+*.local.md
