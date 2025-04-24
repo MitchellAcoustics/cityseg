@@ -26,3 +26,5 @@ scripts/
 
 *.hdf5
 .coverage
+/site/
+/docs/demos/outputs/
