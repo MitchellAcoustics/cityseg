@@ -62,7 +62,11 @@ class VisualizationHandler:
 
         results = []
         for image, seg_map in zip(images, seg_maps):
-            color_seg = palette[seg_map]
+            # Convert segmentation map to integer type before using it as an index
+            # This conversion is maintained for robustness, even though the file_handler
+            # should now be saving segmentation maps as integers
+            seg_map_int = np.round(seg_map).astype(np.int32)
+            color_seg = palette[seg_map_int]
 
             if colored_only:
                 results.append(color_seg)

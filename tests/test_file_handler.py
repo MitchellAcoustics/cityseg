@@ -33,7 +33,9 @@ def test_saves_hdf_file_correctly(temp_hdf_file):
     with h5py.File(temp_hdf_file, "r") as f:
         assert "segmentation" in f
         assert "metadata" in f
-        assert np.array_equal(f["segmentation"], segmentation_data)
+        # Check that the values are correctly rounded
+        expected_data = np.round(segmentation_data).astype(np.int32)
+        assert np.array_equal(f["segmentation"], expected_data)
         loaded_metadata = json.loads(f["metadata"][()])
         assert loaded_metadata["frame_step"] == 1
         assert loaded_metadata["palette"] == [1, 2, 3]
@@ -103,3 +105,74 @@ def test_fails_verification_for_empty_analysis_files(tmp_path):
     counts_file.touch()
     percentages_file.touch()
     assert FileHandler.verify_analysis_files(counts_file, percentages_file) is False
+
+
+def test_saves_float_segmentation_as_integers(temp_hdf_file):
+    """
+    Test that floating-point segmentation data is correctly converted to integers when saving.
+
+    This tests the fix for the issue where segmentation maps with floating-point values
+    caused errors when used as indices into the palette array during visualization.
+    """
+    # Create segmentation data with floating-point values
+    segmentation_data = np.random.uniform(0, 5, (10, 10)).astype(np.float32)
+    metadata = {
+        "frame_step": 1,
+        "palette": np.array(
+            [
+                [255, 0, 0],
+                [0, 255, 0],
+                [0, 0, 255],
+                [255, 255, 0],
+                [0, 255, 255],
+                [255, 0, 255],
+            ]
+        ),
+    }
+
+    # Save the data
+    FileHandler.save_hdf_file(temp_hdf_file, segmentation_data, metadata)
+
+    # Verify that the segmentation data was converted to integers
+    with h5py.File(temp_hdf_file, "r") as f:
+        assert "segmentation" in f
+        loaded_data = f["segmentation"][()]
+
+        # Check that the loaded data is an integer type
+        assert np.issubdtype(loaded_data.dtype, np.integer)
+
+        # Check that the values are correctly rounded
+        expected_data = np.round(segmentation_data).astype(np.int32)
+        assert np.array_equal(loaded_data, expected_data)
+
+
+def test_update_hdf_file_converts_float_to_int(temp_hdf_file):
+    """
+    Test that the update_hdf_file method correctly converts floating-point segmentation data to integers.
+    """
+    # Create initial data
+    initial_data = np.zeros((5, 10), dtype=np.int32)
+    metadata = {"frame_step": 1, "palette": [[255, 0, 0], [0, 255, 0]]}
+
+    # Create the initial file
+    with h5py.File(temp_hdf_file, "w") as f:
+        f.create_dataset("segmentation", data=initial_data, maxshape=(None, 10))
+        f.create_dataset("metadata", data=json.dumps(metadata))
+
+    # Create new floating-point data to add
+    new_data = np.random.uniform(0, 5, (5, 10)).astype(np.float32)
+
+    # Update the file with floating-point data
+    FileHandler.update_hdf_file(temp_hdf_file, new_data, 10, metadata)
+
+    # Verify that the added data was converted to integers
+    with h5py.File(temp_hdf_file, "r") as f:
+        assert f["segmentation"].shape == (10, 10)
+        added_data = f["segmentation"][5:]
+
+        # Check that the added data is an integer type
+        assert np.issubdtype(added_data.dtype, np.integer)
+
+        # Check that the values are correctly rounded
+        expected_data = np.round(new_data).astype(np.int32)
+        assert np.array_equal(added_data, expected_data)

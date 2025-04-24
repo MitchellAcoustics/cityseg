@@ -29,6 +29,7 @@ class FileHandler:
 
     Methods:
         save_hdf_file: Saves segmentation data and metadata to an HDF file.
+        update_hdf_file: Updates an existing HDF file with new segmentation data.
         load_hdf_file: Loads segmentation data and metadata from an HDF file.
         verify_hdf_file: Verifies the integrity of an HDF file.
         verify_video_file: Verifies the integrity of a video file.
@@ -48,11 +49,149 @@ class FileHandler:
             metadata (Dict[str, Any]): Metadata associated with the segmentation data.
         """
         with h5py.File(file_path, "w") as f:
+            # Convert segmentation data to integer type before saving
+            if not np.issubdtype(segmentation_data.dtype, np.integer):
+                segmentation_data = np.round(segmentation_data).astype(np.int32)
+
             f.create_dataset("segmentation", data=segmentation_data, compression="gzip")
             if "palette" in metadata and isinstance(metadata["palette"], np.ndarray):
                 metadata["palette"] = metadata["palette"].tolist()
             json_metadata = json.dumps(metadata)
             f.create_dataset("metadata", data=json_metadata)
+
+    @staticmethod
+    def update_hdf_file(
+        file_path: Path,
+        new_segmentation_data: np.ndarray,
+        current_frame_count: int,
+        metadata: Dict[str, Any],
+    ) -> None:
+        """
+        Updates an existing HDF file with new segmentation data incrementally.
+
+        This method is optimized for batch processing by only adding the new data
+        and updating metadata without rewriting the entire file.
+
+        Args:
+            file_path (Path): Path to the HDF file.
+            new_segmentation_data (np.ndarray): New segmentation data to be added.
+            current_frame_count (int): Total number of frames including the new data.
+            metadata (Dict[str, Any]): Updated metadata associated with the segmentation data.
+        """
+        file_exists = file_path.exists()
+        metadata_to_save = metadata.copy()
+
+        # Handle palette conversion for metadata
+        if "palette" in metadata_to_save and isinstance(
+            metadata_to_save["palette"], np.ndarray
+        ):
+            metadata_to_save["palette"] = metadata_to_save["palette"].tolist()
+
+        # Update the frame count in metadata
+        metadata_to_save["frame_count"] = current_frame_count
+
+        # Convert new segmentation data to integer type before saving
+        if not np.issubdtype(new_segmentation_data.dtype, np.integer):
+            new_segmentation_data = np.round(new_segmentation_data).astype(np.int32)
+
+        if file_exists:
+            try:
+                with h5py.File(str(file_path), "a") as f:
+                    # If the file exists but doesn't have the datasets yet, create them
+                    if "segmentation" not in f:
+                        f.create_dataset(
+                            "segmentation",
+                            data=new_segmentation_data,
+                            maxshape=(
+                                None,
+                                *new_segmentation_data.shape[1:],
+                            ),  # None allows unlimited growth
+                            compression="gzip",
+                        )
+                    else:
+                        # Get the current dataset
+                        dset = f["segmentation"]
+
+                        # Make sure we're working with a dataset, not a group or datatype
+                        if isinstance(dset, h5py.Dataset):
+                            old_size = dset.shape[0]
+                            new_size = current_frame_count
+
+                            # Check if the dataset needs resizing
+                            if new_size > old_size:
+                                # If the dataset has a fixed maxshape, recreate it with unlimited first dimension
+                                if (
+                                    dset.maxshape[0] is not None
+                                    and new_size > dset.maxshape[0]
+                                ):
+                                    logger.debug(
+                                        f"Dataset maxshape ({dset.maxshape[0]}) is too small for new size ({new_size}), recreating dataset"
+                                    )
+
+                                    # Read the existing data
+                                    existing_data = dset[:]
+
+                                    # Delete the existing dataset
+                                    del f["segmentation"]
+
+                                    # Create a new dataset with unlimited first dimension
+                                    new_dset = f.create_dataset(
+                                        "segmentation",
+                                        shape=(old_size, *existing_data.shape[1:]),
+                                        maxshape=(None, *existing_data.shape[1:]),
+                                        compression="gzip",
+                                    )
+
+                                    # Copy the existing data
+                                    new_dset[:old_size] = existing_data
+
+                                    # Update our reference
+                                    dset = new_dset
+
+                                # Now resize the dataset (with proper maxshape)
+                                dset.resize((new_size, *dset.shape[1:]))
+
+                            # Add new data
+                            dset[old_size:new_size] = new_segmentation_data
+                        else:
+                            logger.error("'segmentation' is not a Dataset in HDF file")
+                            return
+
+                    # Update metadata
+                    if "metadata" in f:
+                        del f["metadata"]
+
+                    # Create metadata as a string
+                    json_str = json.dumps(metadata_to_save)
+                    f.create_dataset("metadata", data=json_str)
+            except Exception as e:
+                logger.error(f"Error updating HDF file: {str(e)}")
+                # If update fails, try recreating the file
+                logger.info("Attempting to recreate HDF file with all data")
+                FileHandler.save_hdf_file(
+                    file_path,
+                    new_segmentation_data,  # This would lose previous data, but prevents total failure
+                    metadata_to_save,
+                )
+        else:
+            # If the file doesn't exist, create it
+            with h5py.File(str(file_path), "w") as f:
+                f.create_dataset(
+                    "segmentation",
+                    data=new_segmentation_data,
+                    maxshape=(
+                        None,
+                        *new_segmentation_data.shape[1:],
+                    ),  # None allows unlimited growth
+                    compression="gzip",
+                )
+                # Create metadata as a string
+                json_str = json.dumps(metadata_to_save)
+                f.create_dataset("metadata", data=json_str)
+
+        logger.debug(
+            f"HDF file updated at {file_path} with {len(new_segmentation_data)} new frames"
+        )
 
     @staticmethod
     def load_hdf_file(file_path: Path) -> Tuple[h5py.File, Dict[str, Any]]:

@@ -83,9 +83,10 @@ class SegmentationAnalyzer:
 
         chunk_size = 100  # Adjust based on memory constraints
 
-        with open(counts_file, "w", newline="") as cf, open(
-            percentages_file, "w", newline=""
-        ) as pf:
+        with (
+            open(counts_file, "w", newline="") as cf,
+            open(percentages_file, "w", newline="") as pf,
+        ):
             counts_writer = csv.writer(cf)
             percentages_writer = csv.writer(pf)
             counts_writer.writerow(headers)

@@ -224,6 +224,9 @@ class VideoProcessor:
                 segmentation_data = hdf_file[
                     "segmentation"
                 ]  # This is now a h5py.Dataset
+                logger.debug(
+                    f"Loaded segmentation data with shape: {segmentation_data.shape}"
+                )
 
             # Generate videos based on the processing plan
             if (
@@ -260,7 +263,21 @@ class VideoProcessor:
         fps = cap.get(cv2.CAP_PROP_FPS)
         cap.release()
 
+        metadata = {
+            "model_name": self.config.model.name,
+            "original_video": str(self.config.input.name),
+            "palette": np.array(self.pipeline.palette.tolist(), np.uint8)
+            if self.pipeline.palette is not None
+            else None,
+            "label_ids": self.pipeline.model.config.id2label,
+            "frame_step": self.config.frame_step,
+            "total_video_frames": total_frames,
+            "fps": fps,
+        }
+
         segmentation_data = []
+        output_path = self.config.get_output_path()
+        hdf_path = output_path.with_name(f"{output_path.stem}_segmentation.h5")
 
         logger.info(f"Processing video frames in batches of {self.config.batch_size}")
         with tqdm_context(
@@ -271,27 +288,33 @@ class VideoProcessor:
             for batch in self._frame_generator(
                 cv2.VideoCapture(str(self.config.input))
             ):
-                # logger.debug("Loading batch into pipeline...")
+                # Process the current batch
                 batch_results = self.pipeline(batch)
-                # logger.debug("Adding batch results to segmentation data...")
-                segmentation_data.extend(
-                    [result["seg_map"] for result in batch_results]
-                )
+                batch_segmentation = [result["seg_map"] for result in batch_results]
+
+                # Add batch results to our in-memory segmentation data
+                segmentation_data.extend(batch_segmentation)
+                current_frame_count = len(segmentation_data)
+
+                # Update the HDF file incrementally if required
+                if self.processing_plan.plan["generate_hdf"]:
+                    metadata["frame_count"] = current_frame_count
+
+                    # Use the new incremental update method
+                    logger.debug(f"Incrementally updating HDF file: {hdf_path}")
+                    self.file_handler.update_hdf_file(
+                        hdf_path,
+                        np.array(batch_segmentation),  # Only pass the new batch data
+                        current_frame_count,  # Pass the total frame count so far
+                        metadata,
+                    )
+
                 pbar.update(len(batch))
+
         cap.release()
 
-        metadata = {
-            "model_name": self.config.model.name,
-            "original_video": str(self.config.input.name),
-            "palette": np.array(self.pipeline.palette.tolist(), np.uint8)
-            if self.pipeline.palette is not None
-            else None,
-            "label_ids": self.pipeline.model.config.id2label,
-            "frame_count": len(segmentation_data),
-            "frame_step": self.config.frame_step,
-            "total_video_frames": total_frames,
-            "fps": fps,
-        }
+        logger.debug(f"Segmentation data completed: {len(segmentation_data)} frames")
+        metadata["frame_count"] = len(segmentation_data)
 
         return np.array(segmentation_data), metadata
 
@@ -348,33 +371,41 @@ class VideoProcessor:
         video_writers = self._initialize_video_writers(width, height, fps)
 
         chunk_size = 100  # Adjust this value based on available memory
-        for chunk_start in range(0, len(segmentation_data), chunk_size):
-            chunk_end = min(chunk_start + chunk_size, len(segmentation_data))
-            seg_chunk = get_segmentation_data_batch(
-                segmentation_data, chunk_start, chunk_end
-            )
 
-            frames = self._get_video_frames_batch(
-                cap, chunk_start, chunk_end, metadata["frame_step"]
-            )
-
-        if self.processing_plan.plan.get("generate_colored_video", False):
-            colored_frames = self.visualizer.visualize_segmentation(
-                frames, seg_chunk, metadata["palette"], colored_only=True
-            )
-            for colored_frame in colored_frames:
-                video_writers["colored"].write(
-                    cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
+        with tqdm_context(
+            total=len(segmentation_data),
+            desc="Generating videos",
+            disable=self.config.disable_tqdm,
+        ) as pbar:
+            for chunk_start in range(0, len(segmentation_data), chunk_size):
+                chunk_end = min(chunk_start + chunk_size, len(segmentation_data))
+                seg_chunk = get_segmentation_data_batch(
+                    segmentation_data, chunk_start, chunk_end
                 )
 
-        if self.processing_plan.plan.get("generate_overlay_video", False):
-            overlay_frames = self.visualizer.visualize_segmentation(
-                frames, seg_chunk, metadata["palette"], colored_only=False
-            )
-            for overlay_frame in overlay_frames:
-                video_writers["overlay"].write(
-                    cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
+                frames = self._get_video_frames_batch(
+                    cap, chunk_start, chunk_end, metadata["frame_step"]
                 )
+
+                if self.processing_plan.plan.get("generate_colored_video", False):
+                    colored_frames = self.visualizer.visualize_segmentation(
+                        frames, seg_chunk, metadata["palette"], colored_only=True
+                    )
+                    for colored_frame in colored_frames:
+                        video_writers["colored"].write(
+                            cv2.cvtColor(colored_frame, cv2.COLOR_RGB2BGR)
+                        )
+
+                if self.processing_plan.plan.get("generate_overlay_video", False):
+                    overlay_frames = self.visualizer.visualize_segmentation(
+                        frames, seg_chunk, metadata["palette"], colored_only=False
+                    )
+                    for overlay_frame in overlay_frames:
+                        video_writers["overlay"].write(
+                            cv2.cvtColor(overlay_frame, cv2.COLOR_RGB2BGR)
+                        )
+
+                pbar.update(chunk_size)
 
         for writer in video_writers.values():
             writer.release()
