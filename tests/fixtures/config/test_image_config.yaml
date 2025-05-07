@@ -1,0 +1,24 @@
+# Test configuration for image processing
+input: "../images/test_image.png"
+output_dir: "../outputs"
+output_prefix: "test_output"
+
+model:
+  name: "mock/segformer-b0-cityscapes-test"
+  model_type: "segformer"
+  max_size: 640
+  device: "cpu"
+  num_workers: 0
+
+frame_step: 1  # Not used for image but required
+batch_size: 1
+save_raw_segmentation: true
+save_colored_segmentation: true
+save_overlay: true
+analyze_results: true
+force_reprocess: true
+disable_tqdm: true
+
+visualization:
+  alpha: 0.5
+  colormap: "default"

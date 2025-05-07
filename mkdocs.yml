@@ -4,7 +4,7 @@ site_author: Andrew Mitchell
 
 repo_name: MitchellAcoustics/cityseg
 repo_url: https://github.com/soundscape-labs/cityseg
-edit_uri: 'docs/'
+edit_uri: "docs/"
 
 theme:
   name: material
@@ -32,21 +32,35 @@ theme:
 
 nav:
   - Home: index.md
-  - Getting Started: getting_started.md
   - User Guide:
-    - Configuration: user_guide/configuration.md
-#    - Image Processing: user_guide/image_processing.md
-#    - Video Processing: user_guide/video_processing.md
-#    - Multi-Video Processing: user_guide/multi_video_processing.md
+      - Getting Started: user_guide/getting_started.md
+      - Configuration: user_guide/configuration.md
+      - Image Processing: user_guide/image_processing.md
+      - Video Processing: user_guide/video_processing.md
+  - Demos:
+      - Component Architecture: demos/component_demo.ipynb
   - API Reference:
-    - Config: api/config.md
-    - Pipeline: api/pipeline.md
-    - Processors: api/processors.md
-    - Segments Analysis: api/segments_analysis.md
-    - Handlers: api/handlers.md
-    - Utils: api/utils.md
-    - Palettes: api/palettes.md
-    - Exceptions: api/exceptions.md
+      - Core:
+          - Config: api/core/config.md
+          - Exceptions: api/core/exceptions.md
+      - Components:
+          - Image: api/components/image.md
+          - Video: api/components/video.md
+          - Segmentation: api/components/segmentation.md
+          - Dataset: api/components/dataset.md
+          - Pipeline: api/components/pipeline.md
+      - Analysis:
+          - Analyzer: api/analysis/analyzer.md
+          - Visualization: api/analysis/visualization.md
+      - Storage:
+          - Storage: api/storage/storage.md
+      - Utils:
+          - Common: api/utils/common.md
+          - Palettes: api/utils/palettes.md
+      - Workflow:
+          - Hamilton: api/workflow/hamilton.md
+      - Legacy:
+          - Processors: api/legacy/processors.md
   - Contributing: contributing.md
   - Changelog: changelog.md
 
@@ -74,8 +88,8 @@ markdown_extensions:
   - pymdownx.betterem:
       smart_enable: all
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
       options:
         custom_icons:
           - overrides/.icons
@@ -115,13 +129,13 @@ plugins:
             separate_signature: true
             modernize_annotations: true # waiting for general release
             members_order: source
-#            show_signature_annotations: true
+            #            show_signature_annotations: true
             show_signature: true
             filter_private: true
-#  - mkdocs-jupyter:
-#      kernel_name: python3
-#      execute: true
-#      include_source: true
+  - mkdocs-jupyter:
+      kernel_name: python3
+      execute: false
+      include_source: true
 
 watch:
   - src/cityseg

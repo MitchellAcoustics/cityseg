@@ -1,9 +1,9 @@
 [project]
 name = "cityseg"
-version = "0.3.1dev3"
+version = "0.4.0dev1"
 description = "A flexible and efficient semantic segmentation pipeline for processing images and videos"
 authors = [
-    { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" }
+    { name = "Andrew Mitchell", email = "mitchellacoustics15@gmail.com" },
 ]
 dependencies = [
     "torch>=2.4.0",
@@ -12,12 +12,17 @@ dependencies = [
     "opencv-python>=4.10.0.84",
     "numpy>=2.0.1",
     "pillow>=10.4.0",
-    "h5py>=3.11.0",
+    # h5py dependency is now removed as we use zarr/xarray instead
     "pandas[performance]>=2.2.2",
     "tqdm>=4.66.4",
     "pyyaml>=6.0.1",
     "scipy>=1.14.0",
     "loguru>=0.7.2",
+    "xarray>=2023.10.0",
+    "zarr>=2.15.0",
+    "pyarrow>=14.0.0",
+    "sf-hamilton[lsp,sdk,ui]>=1.88.0",
+    "dask>=2025.3.0",
 ]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,17 +44,21 @@ packages = ["src/cityseg"]
 
 [dependency-groups]
 dev = [
+    "jupyter>=1.1.1",
+    "mypy>=1.15.0",
+    "pandas-stubs>=2.2.3.250308",
     "rich>=13.9.4",
+    "types-pyyaml>=6.0.12.20250402",
+    "types-tqdm>=4.67.0.20250404",
 ]
 docs = [
+    "matplotlib>=3.10.1",
     "mkdocs>=1.6.1",
+    "mkdocs-jupyter>=0.25.1",
     "mkdocs-material>=9.5.44",
     "mkdocstrings[python]>=0.27.0",
 ]
-test = [
-    "pytest>=8.3.3",
-    "pytest-cov>=6.0.0",
-]
+test = ["pytest>=8.3.3", "pytest-cov>=6.0.0"]
 
 [tool.pytest.ini_options]
 addopts = "-v --tb=short --durations=5 --cov=src/cityseg --cov-report=term"
@@ -58,23 +67,20 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 console_output_style = "count"
+norecursedirs = ["tests/archive", ".git", "__pycache__"]
 markers = [
     "slow: mark test as slow",
     "skip: mark test as skipped",
     "skipif: mark test as skipped if condition is met",
     "xfail: mark test as expected to fail",
-    "parametrize: mark test as parametrized"
+    "parametrize: mark test as parametrized",
 ]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    "*.hdf5",
-    "docs/tutorials",
-    "docs/img"
-]
+exclude = ["*.hdf5", "docs/tutorials", "docs/img"]
 
 [tool.bumpver]
-current_version = "v0.3.1rc0"
+current_version = "v0.4.0dev1"
 version_pattern = "vMAJOR.MINOR.PATCH[[-]PYTAGNUM]"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
@@ -87,10 +93,13 @@ push = true
     '^current_version = "{version}"',
     '^version = "{pep440_version}"',
 ]
-"src/cityseg/__init__.py" = [
-    '^__version__ = "{pep440_version}"',
-]
+"src/cityseg/__init__.py" = ['^__version__ = "{pep440_version}"']
 
 
 [project.scripts]
 cityseg = "cityseg.main:main"
+
+[project.optional-dependencies]
+lance = [
+    "pylance>=0.25.2",
+]

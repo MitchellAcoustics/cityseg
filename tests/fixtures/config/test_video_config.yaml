@@ -1,0 +1,24 @@
+# Test configuration for video processing
+input: "../videos/test_video.mp4"
+output_dir: "../outputs"
+output_prefix: "test_video_output"
+
+model:
+  name: "mock/segformer-b0-cityscapes-test"
+  model_type: "segformer"
+  max_size: 640
+  device: "cpu"
+  num_workers: 0
+
+frame_step: 5  # Process every 5th frame for faster testing
+batch_size: 1
+save_raw_segmentation: true
+save_colored_segmentation: true
+save_overlay: true
+analyze_results: true
+force_reprocess: true
+disable_tqdm: true
+
+visualization:
+  alpha: 0.5
+  colormap: "default"
