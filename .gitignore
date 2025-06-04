@@ -25,4 +25,7 @@ scripts/
 /.vscode/settings.json
 
 *.hdf5
-.coverage
+.coverage*
+site/
+CLAUDE.local.md
+docs/demos/outputs/

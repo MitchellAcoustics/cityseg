@@ -21,34 +21,39 @@ For detailed usage instructions, please refer to the package documentation.
 
 __version__ = "0.3.1rc0"
 
-from . import palettes
-from .config import Config
+# Core xarray-based functionality
+from .components import (
+    SegmentationDataset,
+    create_segmentation_dataset,
+    load_segmentation_dataset,
+    save_segmentation_dataset,
+)
+
+# Segmentation functions
+from .segmentation import (
+    load_segmentation_model,
+    segment_image,
+    segment_video,
+    segment_from_path,
+)
+
+# Essential exceptions
 from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
-from .file_handler import FileHandler
-from .pipeline import SegmentationPipeline, create_segmentation_pipeline
-from .processing_plan import ProcessingPlan
-from .processors import DirectoryProcessor, SegmentationProcessor, create_processor
-from .segmentation_analyzer import SegmentationAnalyzer
-from .utils import setup_logging
-from .video_file_iterator import VideoFileIterator
-from .visualization_handler import VisualizationHandler
 
 __all__ = [
-    "Config",
-    "SegmentationPipeline",
-    "create_segmentation_pipeline",
-    "SegmentationProcessor",
-    "SegmentationAnalyzer",
-    "DirectoryProcessor",
-    "create_processor",
+    # Core Dataset API
+    "SegmentationDataset",
+    "create_segmentation_dataset",
+    "load_segmentation_dataset",
+    "save_segmentation_dataset",
+    # Segmentation Functions
+    "load_segmentation_model",
+    "segment_image",
+    "segment_video",
+    "segment_from_path",
+    # Exceptions
     "ConfigurationError",
     "InputError",
     "ModelError",
     "ProcessingError",
-    "setup_logging",
-    "palettes",
-    "FileHandler",
-    "VisualizationHandler",
-    "ProcessingPlan",
-    "VideoFileIterator",
 ]

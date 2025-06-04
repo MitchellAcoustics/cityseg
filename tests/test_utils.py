@@ -208,9 +208,9 @@ class TestSetupLogging:
         """
         setup_logging("INFO")
         assert mock_logger.remove.called, "logger.remove() should be called"
-        assert (
-            len(mock_logger.add.call_args_list) == 2
-        ), "Should add console and file handlers"
+        assert len(mock_logger.add.call_args_list) == 2, (
+            "Should add console and file handlers"
+        )
 
         # Verify console handler
         console_call = mock_logger.add.call_args_list[0]
@@ -219,9 +219,9 @@ class TestSetupLogging:
 
         # Verify file handler
         file_call = mock_logger.add.call_args_list[1]
-        assert (
-            file_call[0][0] == "segmentation.log"
-        ), "File handler should use 'segmentation.log'"
+        assert file_call[0][0] == "segmentation.log", (
+            "File handler should use 'segmentation.log'"
+        )
         assert file_call[1]["level"] == "INFO", "File level should be INFO"
 
     @patch("cityseg.utils.logger")
@@ -234,9 +234,9 @@ class TestSetupLogging:
         """
         setup_logging("INFO", verbose=True)
         console_call = mock_logger.add.call_args_list[0]
-        assert (
-            console_call[1]["level"] == "DEBUG"
-        ), "Console level should be DEBUG in verbose mode"
+        assert console_call[1]["level"] == "DEBUG", (
+            "Console level should be DEBUG in verbose mode"
+        )
 
     @patch("cityseg.utils.logger")
     def test_different_log_levels(self, mock_logger):
@@ -250,17 +250,17 @@ class TestSetupLogging:
         console_call = mock_logger.add.call_args_list[0]
         file_call = mock_logger.add.call_args_list[1]
         assert console_call[1]["level"] == "DEBUG", "Console level should be DEBUG"
-        assert (
-            file_call[1]["level"] == "DEBUG"
-        ), "File level should be DEBUG (minimum of input and INFO)"
+        assert file_call[1]["level"] == "DEBUG", (
+            "File level should be DEBUG (minimum of input and INFO)"
+        )
 
         setup_logging("WARNING")
         console_call = mock_logger.add.call_args_list[2]
         file_call = mock_logger.add.call_args_list[3]
         assert console_call[1]["level"] == "WARNING", "Console level should be WARNING"
-        assert (
-            file_call[1]["level"] == "INFO"
-        ), "File level should be INFO (minimum of input and INFO)"
+        assert file_call[1]["level"] == "INFO", (
+            "File level should be INFO (minimum of input and INFO)"
+        )
 
     @patch("cityseg.utils.logger")
     def test_file_logging_config(self, mock_logger):
@@ -273,9 +273,9 @@ class TestSetupLogging:
         setup_logging("INFO")
         file_call = mock_logger.add.call_args_list[1]
         assert file_call[1]["rotation"] == "100 MB", "File should rotate at 100 MB"
-        assert (
-            file_call[1]["retention"] == "1 week"
-        ), "File should be retained for 1 week"
+        assert file_call[1]["retention"] == "1 week", (
+            "File should be retained for 1 week"
+        )
         assert file_call[1]["serialize"] is True, "File logging should be serialized"
 
     @patch("cityseg.utils.logger")

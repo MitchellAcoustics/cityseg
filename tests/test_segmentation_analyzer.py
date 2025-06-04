@@ -56,12 +56,12 @@ class TestSegmentationAnalyzer:
         assert len(result) == len(expected), "Number of categories does not match"
         for category in expected:
             assert category in result, f"Category {category} is missing from the result"
-            assert (
-                result[category][0] == expected[category][0]
-            ), f"Pixel count for category {category} does not match"
-            assert np.isclose(
-                result[category][1], expected[category][1], rtol=1e-9
-            ), f"Percentage for category {category} is not close enough"
+            assert result[category][0] == expected[category][0], (
+                f"Pixel count for category {category} does not match"
+            )
+            assert np.isclose(result[category][1], expected[category][1], rtol=1e-9), (
+                f"Percentage for category {category} is not close enough"
+            )
 
     @patch("cityseg.segmentation_analyzer.get_segmentation_data_batch")
     @patch("cityseg.segmentation_analyzer.open", new_callable=mock_open)
@@ -118,9 +118,9 @@ class TestSegmentationAnalyzer:
 
         assert mock_open.call_count == 2, "Should open two files for writing"
         assert mock_csv_writer.call_count == 2, "Should create two CSV writers"
-        assert (
-            mock_generate_stats.call_count == 2
-        ), "Should call generate_category_stats twice"
+        assert mock_generate_stats.call_count == 2, (
+            "Should call generate_category_stats twice"
+        )
 
     @patch("cityseg.segmentation_analyzer.pd.read_csv")
     @patch("cityseg.segmentation_analyzer.logger")
