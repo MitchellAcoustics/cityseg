@@ -6,10 +6,10 @@ specialized operations on segmentation data.
 
 from __future__ import annotations
 
-
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from pathlib import Path
+from cityseg.components.media import MediaDataset
 
 import numpy as np
 import pandas as pd
@@ -40,24 +40,194 @@ class SegmentationAccessor:
     def __init__(self, xarray_obj: xr.Dataset) -> None:
         self._obj = xarray_obj
 
-        # Validate this is a segmentation dataset
-        if "segmentation" not in xarray_obj.data_vars:
-            raise ValueError("Dataset must contain 'segmentation' data variable")
+        # Validate that this is a SegmentationDataset
+        if not isinstance(xarray_obj, xr.Dataset):
+            raise TypeError(
+                "SegmentationAccessor can only be used with xarray.Dataset objects"
+            )
+
+        MediaDataset.validate_dataset(xarray_obj)
 
     @property
     def is_video(self) -> bool:
-        """Check if this is video segmentation data (has time dimension)."""
+        """Check if this is video data (has time dimension)."""
         return "time" in self._obj.dims
+
+    @property
+    def has_segmentation(self) -> bool:
+        """Check if this dataset has segmentation data."""
+        return "seg_map" in self._obj.data_vars
+
+    @property
+    def is_media_dataset(self) -> bool:
+        """Check if this is a MediaDataset (has image data)."""
+        return "image" in self._obj.data_vars
 
     @property
     def num_classes(self) -> int:
         """Get the number of unique classes in the segmentation."""
+        if not self.has_segmentation:
+            raise ValueError(
+                "This property requires segmentation data. Use apply_segmentation() first."
+            )
+
         if hasattr(self._obj, "class_labels"):
             return len(self._obj.attrs["class_labels"])
         else:
             # Compute from data
-            unique_labels = np.unique(self._obj.segmentation.values)
+            unique_labels = np.unique(self._obj.seg_map.values)
             return len(unique_labels)
+
+    def get_class_label_map(self) -> xr.DataArray:
+        """Convert numerical classes in seg_map to their text labels"""
+        if not self.has_segmentation:
+            raise ValueError(
+                "This method requires segmentation data. Use apply_segmentation() first."
+            )
+        return self._obj.class_label.sel(class_id=self._obj.seg_map)
+
+    def get_colored_segmentation(self) -> xr.DataArray:
+        """Convert seg_map to RGB visualization using the palette"""
+        if not self.has_segmentation:
+            raise ValueError(
+                "This method requires segmentation data. Use apply_segmentation() first."
+            )
+        return self._obj.palette.sel(class_id=self._obj.seg_map)
+
+    def class_statistics(self) -> dict[str, dict[str, float]]:
+        """Calculate statistics for each class in the segmentation map"""
+        if not self.has_segmentation:
+            raise ValueError(
+                "This method requires segmentation data. Use apply_segmentation() first."
+            )
+        seg_map = self._obj.seg_map.values
+        total_pixels = seg_map.size
+
+        unique_classes, counts = np.unique(seg_map, return_counts=True)
+
+        stats = {}
+        for cls_id, count in zip(unique_classes, counts):
+            # Get class label if available
+            if "class_label" in self._obj.data_vars and cls_id < len(
+                self._obj.class_label
+            ):
+                class_label = self._obj.class_label.sel(class_id=cls_id).item()
+            else:
+                class_label = f"Unknown-{cls_id}"
+
+            # Calculate statistics
+            percentage = 100 * count / total_pixels
+
+            stats[class_label] = {
+                "class_id": int(cls_id),
+                "pixel_count": int(count),
+                "percentage": float(percentage),
+            }
+
+        return stats
+
+    def plot(
+        self,
+        kind: str = "image",
+        alpha: float = 0.6,
+        figsize: tuple[float, float] = (12, 8),
+    ) -> None:
+        """Plot dataset contents (image, segmentation, or both)
+
+        Parameters
+        ----------
+        kind : str
+            Type of plot: 'image', 'overlay', 'segmentation', 'side-by-side', or 'stats'
+            - 'image': Show just the original image (works for MediaDataset)
+            - 'overlay': Overlay segmentation on image (requires segmentation)
+            - 'segmentation': Show just the segmentation (requires segmentation)
+            - 'side-by-side': Image and segmentation side by side (requires segmentation)
+            - 'stats': Class distribution chart (requires segmentation)
+        alpha : float
+            Transparency for overlay visualization
+        figsize : tuple
+            Figure size (width, height) in inches
+        """
+        plt.figure(figsize=figsize)
+
+        if kind == "image":
+            # Show just the original image
+            plt.imshow(self._obj.image.values)
+            plt.title("Original Image")
+            plt.axis("off")
+
+        elif kind == "overlay":
+            # Create overlay of segmentation on original image
+            if "image" in self._obj.data_vars:
+                plt.imshow(self._obj.image.values)
+                colored_seg = self.get_colored_segmentation().values
+                plt.imshow(colored_seg, alpha=alpha)
+                plt.title("Segmentation Overlay")
+            else:
+                raise ValueError(
+                    "Dataset must contain 'image' data variable for overlay plot"
+                )
+            plt.axis("off")
+
+        elif kind == "segmentation":
+            # Show just the colored segmentation
+            plt.imshow(self.get_colored_segmentation().values)
+            plt.title("Segmentation Map")
+            plt.axis("off")
+
+        elif kind == "side-by-side":
+            # Show original and segmentation side by side
+            if "image" in self._obj.data_vars:
+                plt.subplot(1, 2, 1)
+                plt.imshow(self._obj.image.values)
+                plt.title("Original Image")
+                plt.axis("off")
+
+                plt.subplot(1, 2, 2)
+                plt.imshow(self.get_colored_segmentation().values)
+                plt.title("Segmentation Map")
+                plt.axis("off")
+            else:
+                raise ValueError(
+                    "Dataset must contain 'image' data variable for side-by-side plot"
+                )
+
+        elif kind == "stats":
+            # Show class percentages as a bar chart
+            stats = self.class_statistics()
+            # Sort by percentage
+            sorted_stats = sorted(
+                stats.items(), key=lambda x: x[1]["percentage"], reverse=True
+            )
+
+            # Get top 10 classes
+            top_classes = sorted_stats[:10]
+
+            labels = [class_name for class_name, _ in top_classes]
+            percentages = [stats_data["percentage"] for _, stats_data in top_classes]
+            colors = []
+
+            # Try to get class colors from palette
+            for class_name, class_info in top_classes:
+                cls_id = class_info["class_id"]
+                if "palette" in self._obj.data_vars and cls_id < len(self._obj.palette):
+                    # Convert RGB (0-255) to matplotlib format (0-1)
+                    rgb = self._obj.palette.sel(class_id=cls_id).values / 255.0
+                    colors.append(rgb)
+                else:
+                    colors.append(None)  # Use default color
+
+            plt.barh(labels, percentages, color=colors)
+            plt.xlabel("Area Percentage (%)")
+            plt.title("Class Distribution")
+            plt.tight_layout()
+
+        else:
+            raise ValueError(
+                f"Unknown plot kind: {kind}. Available: 'image', 'overlay', 'segmentation', 'side-by-side', 'stats'"
+            )
+
+        plt.show()
 
     @property
     def class_labels(self) -> dict[int, str]:
@@ -66,7 +236,7 @@ class SegmentationAccessor:
             return self._obj.attrs["class_labels"]
         else:
             # Generate default labels
-            unique_labels = np.unique(self._obj.segmentation.values)
+            unique_labels = np.unique(self._obj.seg_map.values)
             return {int(label): f"class_{label}" for label in unique_labels}
 
     def class_stats(self, normalize: bool = False) -> pd.DataFrame:
@@ -78,7 +248,7 @@ class SegmentationAccessor:
         Returns:
             DataFrame with class statistics (counts/proportions, percentages)
         """
-        seg_data = self._obj.segmentation
+        seg_data = self._obj.seg_map
 
         if self.is_video:
             # For video data, compute stats per frame then aggregate
@@ -171,7 +341,7 @@ class SegmentationAccessor:
             fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (10, 8)))
 
         # Get segmentation data
-        seg_data = self._obj.segmentation
+        seg_data = self._obj.seg_map
 
         if self.is_video:
             if frame is None:
@@ -278,7 +448,7 @@ class SegmentationAccessor:
         if isinstance(class_ids, int):
             class_ids = [class_ids]
 
-        seg_data = self._obj.segmentation
+        seg_data = self._obj.seg_map
         mask = xr.zeros_like(seg_data, dtype=bool)
 
         for class_id in class_ids:
@@ -310,7 +480,7 @@ class SegmentationAccessor:
         if not self.is_video:
             raise ValueError("Temporal statistics only available for video data")
 
-        seg_data = self._obj.segmentation
+        seg_data = self._obj.seg_map
 
         # Compute statistics over time dimension
         # Most frequent class per pixel (mode calculation)
@@ -366,7 +536,7 @@ class SegmentationAccessor:
             RGB image array with shape (H, W, 3)
         """
         # Get segmentation data
-        seg_data = self._obj.segmentation
+        seg_data = self._obj.seg_map
 
         if self.is_video:
             if frame is None:
@@ -436,3 +606,112 @@ class SegmentationAccessor:
             json.dump(metadata, f, indent=2, default=str)
 
         logger.info(f"Exported analysis to {output_path}_*")
+
+    def to_binary_mask(self, class_id: int | list[int]) -> np.ndarray:
+        """Create a binary mask for the specified class ID(s)
+
+        Parameters
+        ----------
+        class_id : int or list of int
+            Class ID(s) to include in the binary mask
+
+        Returns
+        -------
+        np.ndarray
+            Binary mask where 1 indicates the specified class(es)
+        """
+        seg_map = self._obj.seg_map.values
+
+        if isinstance(class_id, int):
+            return (seg_map == class_id).astype(np.uint8)
+        elif isinstance(class_id, (list, tuple)):
+            mask = np.zeros_like(seg_map, dtype=np.uint8)
+            for cid in class_id:
+                mask = np.logical_or(mask, seg_map == cid)
+            return mask.astype(np.uint8)
+        else:
+            raise TypeError("class_id must be an integer or list of integers")
+
+    def get_class_boundaries(
+        self, class_id: int | list[int] | None = None
+    ) -> np.ndarray:
+        """Get the boundaries of segmentation regions
+
+        Parameters
+        ----------
+        class_id : int or list of int, optional
+            If provided, only get boundaries for these classes
+
+        Returns
+        -------
+        np.ndarray
+            Binary boundary mask
+        """
+        from scipy import ndimage
+
+        if class_id is not None:
+            # Get binary mask for specified class(es)
+            mask = self.to_binary_mask(class_id)
+        else:
+            # Use full segmentation map
+            mask = self._obj.seg_map.values
+
+        # Apply gradient filter to detect edges
+        edges_x = ndimage.sobel(mask, axis=0)
+        edges_y = ndimage.sobel(mask, axis=1)
+        edges = np.hypot(edges_x, edges_y)
+
+        # Normalize and threshold
+        edges = (edges > 0).astype(np.uint8)
+
+        return edges
+
+    def apply_segmentation(
+        self,
+        model=None,
+        processor=None,
+        model_name: str = "nvidia/segformer-b0-finetuned-ade-512-512",
+        return_confidence: bool = False,
+    ) -> xr.Dataset:
+        """Apply segmentation to this dataset.
+
+        This method provides a convenient way to apply segmentation analysis
+        to a MediaDataset using the accessor interface.
+
+        Args:
+            model: Pre-loaded segmentation model (loads if None)
+            processor: Pre-loaded image processor (loads if None)
+            model_name: Model to use if model/processor not provided
+            return_confidence: Whether to include confidence scores
+
+        Returns:
+            Enhanced dataset with segmentation results added
+
+        Raises:
+            ValueError: If dataset doesn't contain image data
+            ImportError: If required segmentation dependencies are missing
+
+        Example:
+            >>> media_ds = cityseg.load_image("image.jpg")
+            >>> segmented_ds = media_ds.seg.apply_segmentation(model, processor)
+            >>> stats = segmented_ds.seg.class_statistics()
+        """
+        # Check that this is a media dataset
+        if not self.is_media_dataset:
+            raise ValueError(
+                "apply_segmentation requires a MediaDataset with 'image' data variable"
+            )
+
+        # Import here to avoid circular imports
+        from ..segmentation import apply_segmentation
+
+        enhanced_ds = apply_segmentation(
+            media_ds=self._obj,
+            model=model,
+            processor=processor,
+            model_name=model_name,
+            return_confidence=return_confidence,
+        )
+
+        self._obj = enhanced_ds
+        return self._obj

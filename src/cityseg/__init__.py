@@ -23,18 +23,23 @@ __version__ = "0.3.1rc0"
 
 # Core xarray-based functionality
 from .components import (
+    MediaDataset,
     SegmentationDataset,
-    create_segmentation_dataset,
-    load_segmentation_dataset,
-    save_segmentation_dataset,
+    load_image,
+    load_video,
+    load_media_dataset,
+    save_media_dataset,
 )
 
 # Segmentation functions
 from .segmentation import (
+    apply_segmentation,
     load_segmentation_model,
     segment_image,
     segment_video,
     segment_from_path,
+    segment_image_file,
+    segment_video_file,
 )
 
 # Essential exceptions
@@ -42,15 +47,21 @@ from .exceptions import ConfigurationError, InputError, ModelError, ProcessingEr
 
 __all__ = [
     # Core Dataset API
+    "MediaDataset",
     "SegmentationDataset",
-    "create_segmentation_dataset",
-    "load_segmentation_dataset",
-    "save_segmentation_dataset",
+    # Media Loading API
+    "load_image",
+    "load_video",
+    "load_media_dataset",
+    "save_media_dataset",
     # Segmentation Functions
+    "apply_segmentation",
     "load_segmentation_model",
     "segment_image",
     "segment_video",
     "segment_from_path",
+    "segment_image_file",
+    "segment_video_file",
     # Exceptions
     "ConfigurationError",
     "InputError",

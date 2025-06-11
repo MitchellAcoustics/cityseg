@@ -18,7 +18,7 @@ from transformers import AutoImageProcessor, AutoModelForSemanticSegmentation
 from transformers.image_processing_utils import BaseImageProcessor
 from transformers.modeling_utils import PreTrainedModel
 
-from .components import create_segmentation_dataset
+from .components.media import MediaDataset
 
 
 def load_segmentation_model(
@@ -342,3 +342,267 @@ def segment_video(
 
     logger.info(f"Segmented video: {segmentation_array.shape}")
     return ds
+
+
+def apply_segmentation(
+    media_ds: xr.Dataset,
+    model: PreTrainedModel | None = None,
+    processor: BaseImageProcessor | None = None,
+    model_name: str = "nvidia/segformer-b0-finetuned-ade-512-512",
+    return_confidence: bool = False,
+) -> xr.Dataset:
+    """Apply segmentation to an existing MediaDataset.
+
+    Args:
+        media_ds: MediaDataset containing image/video data
+        model: Pre-loaded segmentation model (loads if None)
+        processor: Pre-loaded image processor (loads if None)
+        model_name: Model to use if model/processor not provided
+        return_confidence: Whether to include confidence scores
+
+    Returns:
+        Enhanced dataset with segmentation results added
+
+    Raises:
+        ValueError: If media_ds is not a valid MediaDataset
+    """
+    # Validate input dataset
+    MediaDataset.validate_dataset(media_ds)
+
+    # Load model if not provided
+    if model is None or processor is None:
+        model, processor = load_segmentation_model(model_name)
+
+    # Get image data
+    image_data = media_ds.image.values
+    is_video = MediaDataset.is_video(media_ds)
+
+    device = next(model.parameters()).device
+
+    if is_video:
+        # Process video frames
+        num_frames = image_data.shape[0]
+        segmentation_maps = []
+        confidence_maps = [] if return_confidence else None
+
+        logger.info(f"Processing {num_frames} video frames...")
+
+        with torch.no_grad():
+            for frame_idx in range(num_frames):
+                frame = image_data[frame_idx]  # Shape: (H, W, 3)
+
+                # Convert to PIL Image for processor
+                pil_image = Image.fromarray(frame.astype(np.uint8))
+
+                # Process frame
+                inputs = processor(images=pil_image, return_tensors="pt")
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+
+                # Run inference
+                outputs = model(**inputs)
+                logits = outputs.logits
+
+                # Resize to original frame size
+                h, w = frame.shape[:2]
+                upsampled_logits = torch.nn.functional.interpolate(
+                    logits,
+                    size=(h, w),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+
+                # Get predictions
+                predictions = upsampled_logits.argmax(dim=1)
+                seg_map = predictions[0].cpu().numpy().astype(np.int32)
+                segmentation_maps.append(seg_map)
+
+                # Get confidence if requested
+                if return_confidence:
+                    if confidence_maps is None:
+                        confidence_maps = []
+                    probabilities = torch.softmax(upsampled_logits, dim=1)
+                    max_probs = probabilities.max(dim=1)[0]
+                    conf_map = max_probs[0].cpu().numpy().astype(np.float32)
+                    confidence_maps.append(conf_map)
+
+                if (frame_idx + 1) % 10 == 0:
+                    logger.info(f"Processed {frame_idx + 1}/{num_frames} frames")
+
+        # Stack arrays
+        segmentation_array = np.stack(segmentation_maps)
+        confidence_array = np.stack(confidence_maps) if confidence_maps else None
+        seg_dims = ["time", "y", "x"]
+
+    else:
+        # Process image
+        inputs = processor(images=image_data, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        # Run inference
+        with torch.no_grad():
+            outputs = model(**inputs)
+
+        logits = outputs.logits
+
+        # Resize to original image size
+        h, w = image_data.shape[:2]
+        upsampled_logits = torch.nn.functional.interpolate(
+            logits,
+            size=(h, w),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        # Get predictions
+        predictions = upsampled_logits.argmax(dim=1)
+        segmentation_array = predictions[0].cpu().numpy().astype(np.int32)
+
+        # Get confidence if requested
+        confidence_array = None
+        if return_confidence:
+            probabilities = torch.softmax(upsampled_logits, dim=1)
+            max_probs = probabilities.max(dim=1)[0]
+            confidence_array = max_probs[0].cpu().numpy().astype(np.float32)
+
+        seg_dims = ["y", "x"]
+
+    # Get class labels from model config
+    class_labels = {}
+    if hasattr(model.config, "id2label"):
+        class_labels = {int(k): v for k, v in model.config.id2label.items()}
+    else:
+        # Generate default labels
+        unique_classes = np.unique(segmentation_array)
+        class_labels = {int(cls): f"class_{cls}" for cls in unique_classes}
+
+    # Create a copy of the media dataset to avoid modifying original
+    enhanced_ds = media_ds.copy(deep=True)
+
+    # Add class_id coordinate for segmentation data
+    class_ids = list(class_labels.keys())
+    if "class_id" not in enhanced_ds.coords:
+        enhanced_ds = enhanced_ds.assign_coords(class_id=("class_id", class_ids))
+
+    # Add segmentation data
+    enhanced_ds["seg_map"] = (seg_dims, segmentation_array.astype(np.int32))
+
+    # Add confidence data if requested
+    if confidence_array is not None:
+        enhanced_ds["confidence"] = (seg_dims, confidence_array.astype(np.float32))
+
+    # Add class labels as data variable
+    class_label_array = np.array([class_labels[cid] for cid in class_ids])
+    enhanced_ds["class_label"] = (["class_id"], class_label_array)
+
+    # Add palette as data variable (generate default colors)
+    palette_array = np.zeros((len(class_ids), 3), dtype=np.uint8)
+
+    import matplotlib.pyplot as plt
+
+    cmap = plt.cm.get_cmap("tab20")
+
+    for i, cid in enumerate(class_ids):
+        # Generate default color
+        color = cmap(i / len(class_ids))
+        r, g, b = color[:3]
+        palette_array[i] = [int(r * 255), int(g * 255), int(b * 255)]
+
+    enhanced_ds["palette"] = (["class_id", "rgb"], palette_array)
+
+    # Update attributes
+    enhanced_ds.attrs.update(
+        {
+            "model_name": model_name,
+            "class_labels": class_labels,
+            "model_version": getattr(model.config, "model_version", None),
+            "has_segmentation": True,
+        }
+    )
+
+    # Add processing metadata
+    from datetime import datetime
+
+    processing_info = {
+        "segmentation_applied_at": datetime.now().isoformat(),
+        "segmentation_model": model_name,
+        "return_confidence": return_confidence,
+    }
+
+    if "processing_metadata" in enhanced_ds.attrs:
+        enhanced_ds.attrs["processing_metadata"].update(processing_info)
+    else:
+        enhanced_ds.attrs["processing_metadata"] = processing_info
+
+    logger.info(f"Applied segmentation to {'video' if is_video else 'image'}")
+    return enhanced_ds
+
+
+# Pipeline functions for convenient workflows
+def segment_image_file(
+    file_path: str | Path,
+    model: PreTrainedModel | None = None,
+    processor: BaseImageProcessor | None = None,
+    model_name: str = "nvidia/segformer-b0-finetuned-ade-512-512",
+    return_confidence: bool = False,
+) -> xr.Dataset:
+    """Complete pipeline: load image file -> apply segmentation.
+
+    Args:
+        file_path: Path to image file
+        model: Pre-loaded segmentation model (loads if None)
+        processor: Pre-loaded image processor (loads if None)
+        model_name: Model to use if model/processor not provided
+        return_confidence: Whether to include confidence scores
+
+    Returns:
+        Dataset with both image data and segmentation results
+    """
+    from .components.media import load_image
+
+    # Load image as MediaDataset
+    media_ds = load_image(file_path)
+
+    # Apply segmentation
+    return apply_segmentation(
+        media_ds=media_ds,
+        model=model,
+        processor=processor,
+        model_name=model_name,
+        return_confidence=return_confidence,
+    )
+
+
+def segment_video_file(
+    file_path: str | Path,
+    model: PreTrainedModel | None = None,
+    processor: BaseImageProcessor | None = None,
+    model_name: str = "nvidia/segformer-b0-finetuned-ade-512-512",
+    return_confidence: bool = False,
+    max_frames: int | None = None,
+) -> xr.Dataset:
+    """Complete pipeline: load video file -> apply segmentation.
+
+    Args:
+        file_path: Path to video file
+        model: Pre-loaded segmentation model (loads if None)
+        processor: Pre-loaded image processor (loads if None)
+        model_name: Model to use if model/processor not provided
+        return_confidence: Whether to include confidence scores
+        max_frames: Maximum number of frames to process (None for all)
+
+    Returns:
+        Dataset with both video data and segmentation results
+    """
+    from .components.media import load_video
+
+    # Load video as MediaDataset
+    media_ds = load_video(file_path, max_frames=max_frames)
+
+    # Apply segmentation
+    return apply_segmentation(
+        media_ds=media_ds,
+        model=model,
+        processor=processor,
+        model_name=model_name,
+        return_confidence=return_confidence,
+    )

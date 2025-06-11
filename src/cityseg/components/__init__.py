@@ -1,20 +1,26 @@
 """CitySeg Components Module.
 
-Core xarray-based segmentation dataset functionality.
+Core xarray-based media and segmentation dataset functionality.
 """
 
 from .dataset import (
     SegmentationDataset,
-    create_segmentation_dataset,
-    load_segmentation_dataset,
-    save_segmentation_dataset,
+)
+from .media import (
+    MediaDataset,
+    load_image,
+    load_video,
+    load_media_dataset,
+    save_media_dataset,
 )
 from .accessor import SegmentationAccessor  # This registers the .seg accessor
 
 __all__ = [
     "SegmentationDataset",
-    "create_segmentation_dataset",
-    "load_segmentation_dataset",
-    "save_segmentation_dataset",
+    "MediaDataset",
+    "load_image",
+    "load_video",
+    "load_media_dataset",
+    "save_media_dataset",
     "SegmentationAccessor",
 ]
