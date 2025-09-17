@@ -2,12 +2,14 @@
 
 
 import os
+from pathlib import Path
 import tempfile
+from typing import cast
 
 import av
 import numcodecs
 import numpy as np
-from xarray import DataArray, Dataset
+from xarray import DataArray
 from xarray.backends.common import BackendArray
 from xarray.backends.file_manager import CachingFileManager
 from xarray.backends.locks import SerializableLock
@@ -20,8 +22,8 @@ TEMPDIR = os.path.join(tempfile.gettempdir(), "xarray_video")
 if not os.path.exists(TEMPDIR):
     os.makedirs(TEMPDIR, exist_ok=True)
 
-compressor = numcodecs.registry.get_codec(dict(id="h264"))
-lossless_compressor = numcodecs.registry.get_codec(dict(id="h264", crf=0))
+compressor = numcodecs.registry.get_codec(dict(id="h264"))  # type: ignore
+lossless_compressor = numcodecs.registry.get_codec(dict(id="h264", crf=0))  # type: ignore
 
 
 def _key_length(key, length):
@@ -67,13 +69,16 @@ class VideoArrayWrapper(BackendArray):
 
         frame_key, y_key, x_key, band_key = key
 
+        f0: int
+        f1: int
+        fstep: int
         if isinstance(frame_key, slice):
             f0 = frame_key.start or 0
             f1 = frame_key.stop or self._shape[0]
             fstep = frame_key.step or 1
         elif is_scalar(frame_key):
-            f0 = frame_key
-            f1 = frame_key + 1
+            f0 = cast(int, frame_key)
+            f1 = cast(int, frame_key) + 1
             fstep = 1
         else:
             f0 = 0
@@ -151,7 +156,7 @@ def _write_video(filename, array, fps=25, metadata={}):
     writer.close()
 
 
-def open_video(filename, start_time=None, **kwargs):
+def open_video(filename, start_time=None, **kwargs) -> DataArray:
     """Video file into an xarray dataset.
 
     This reads a video into an xarray dataset with the video in a DataArray.
@@ -167,10 +172,13 @@ def open_video(filename, start_time=None, **kwargs):
     Raises:
         VideoReadError: Missing or incompatible files
     """
+    file_path = Path(filename)
+    if not file_path.exists():
+        raise FileNotFoundError(f"Video file not found: {file_path}")
 
     manager = CachingFileManager(
         _open_video,
-        filename,
+        file_path,
         lock=VIDEO_LOCK,
         mode="r",
         kwargs=kwargs,
@@ -190,9 +198,11 @@ def open_video(filename, start_time=None, **kwargs):
     width = codec.width
     height = codec.height
 
-    coords = {"channel": ["R", "G", "B"]}
-    coords["pixel_x"] = np.arange(width)
-    coords["pixel_y"] = np.arange(height)
+    coords = {
+        "channel": ["R", "G", "B"],
+        "pixel_x": np.arange(width),
+        "pixel_y": np.arange(height),
+    }
     if start_time:
         times = np.datetime64(start_time) + np.arange(
             0, 1000 * frames / fps, 1000 / fps
@@ -214,29 +224,25 @@ def open_video(filename, start_time=None, **kwargs):
         )
     )
 
-    dataset = Dataset(
-        data_vars={
-            "video": DataArray(
-                data=data,
-                dims=("frame", "pixel_y", "pixel_x", "channel"),
-                coords=coords,
-            )
-        },
+    # Attributes
+    attrs = {"filename": file_path.name, "fps": fps, "_video": codec.name}
+
+    dataarray = DataArray(
+        data=data,
+        dims=("frame", "pixel_y", "pixel_x", "channel"),
+        coords=coords,
+        attrs=attrs,
     )
 
-    # Attributes
-    dataset.attrs["fps"] = fps
-    dataset.attrs["_video"] = codec.name
-
     if start_time:
-        dataset = dataset.set_xindex("time")
+        dataarray = dataarray.set_xindex("time")
 
     # Set the default zarr compressor and assign preferred chunk sizes
-    dataset["video"].encoding = {
+    dataarray.encoding = {
         "preferred_chunks": {"channel": 3, "pixel_y": height, "pixel_x": width},
     }
 
     # Make the file closeable
-    dataset.set_close(manager.close)
+    dataarray.set_close(manager.close)
 
-    return dataset
+    return dataarray

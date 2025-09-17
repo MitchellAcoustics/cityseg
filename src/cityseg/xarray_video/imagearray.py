@@ -10,7 +10,7 @@ class ImageArray:
 
     Implements operations on a dataset which includes image data.
 
-    Based on the VideoArray class from xarray_video.
+    Based on the VideoArray class from xarray_video: https://xarray-video.readthedocs.io/en/latest/index.html
     """
 
     def __init__(self, xarray_arr):

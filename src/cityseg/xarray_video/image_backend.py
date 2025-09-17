@@ -3,8 +3,7 @@ from typing import Literal
 import numpy as np
 from PIL import Image
 
-from xarray import DataArray, Dataset
-import xarray
+from xarray import DataArray
 from xarray.backends.common import BackendArray
 
 from .exceptions import ImageReadError, ImageWriteError
@@ -92,7 +91,7 @@ def open_image(
     formats: list[str] | tuple[str, ...] | None = None,
     resize: tuple[int, int] | list[int] | np.ndarray | None = None,
     **resize_kwargs,
-) -> xarray.Dataset:
+) -> DataArray:
     """
     Image file into an xarray DataSet.
 
@@ -136,23 +135,19 @@ def open_image(
         "pixel_y": np.arange(height),
     }
 
+    # Attributes
+    attrs = {"filename": file_path.name, "_image": img.mode}
+
     # Data
     data = np.array(img, dtype=np.uint8)
 
-    dataset = Dataset(
-        data_vars={
-            "image": DataArray(
-                data=data,
-                dims=("pixel_y", "pixel_x", "channel"),
-                coords=coords,
-            )
-        },
+    dataarray = DataArray(
+        data=data,
+        dims=("pixel_y", "pixel_x", "channel"),
+        coords=coords,
+        attrs=attrs,
     )
-
-    # Attributes
-    dataset.attrs["filename"] = file_path.name
-    dataset.attrs["_image"] = img.format
 
     img.close()  # Close the image file to free resources
 
-    return dataset
+    return dataarray

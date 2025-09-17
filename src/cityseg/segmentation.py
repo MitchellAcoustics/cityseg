@@ -6,24 +6,51 @@ and creating CitySeg xarray datasets.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Literal
+import warnings
 
 import numpy as np
 import torch
 import xarray as xr
 from loguru import logger
 from PIL import Image
-from transformers import AutoImageProcessor, AutoModelForSemanticSegmentation
+from transformers import (
+    AutoImageProcessor,
+    AutoModelForSemanticSegmentation,
+    AutoProcessor,
+    BeitForSemanticSegmentation,
+    Mask2FormerForUniversalSegmentation,
+    MaskFormerForInstanceSegmentation,
+    OneFormerForUniversalSegmentation,
+    SegformerForSemanticSegmentation,
+)
 from transformers.image_processing_utils import BaseImageProcessor
 from transformers.modeling_utils import PreTrainedModel
 
 from .components.media import MediaDataset
+from .config import Config, ModelConfig
+
+
+def _prepare_seg_model_args(config: Config | ModelConfig | None = None, **kwargs):
+    """Prepare model arguments from config and/or kwargs."""
+    if isinstance(config, ModelConfig):
+        if len(kwargs) > 0:
+            for key, value in kwargs.items():
+                setattr(config, key, value)
+        return config
+    elif isinstance(config, Config):
+        if len(kwargs) > 0:
+            for key, value in kwargs.items():
+                setattr(config.model, key, value)
+        return config.model
+    elif config is None:
+        return ModelConfig(**kwargs)
 
 
 def load_segmentation_model(
-    model_name: str = "nvidia/segformer-b0-finetuned-ade-512-512",
-    device: str | None = None,
+    config: Config | ModelConfig | None = None, device: str | None = "auto", **kwargs
 ) -> tuple[PreTrainedModel, BaseImageProcessor]:
     """Load a segmentation model and processor from HuggingFace.
 
@@ -34,22 +61,71 @@ def load_segmentation_model(
     Returns:
         Tuple of (model, image_processor)
     """
-    if device is None:
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            device = "cpu"
+    model_config = _prepare_seg_model_args(config, device=device, **kwargs)
 
-    logger.info(f"Loading model {model_name} on device {device}")
+    model_name = model_config.name
+    model_type = model_config.model_type
+    device_map = "auto" if device == "auto" else model_config.device
+    dataset = model_config.dataset
 
     # Load model and processor
-    model = AutoModelForSemanticSegmentation.from_pretrained(model_name)
-    processor = AutoImageProcessor.from_pretrained(model_name)
+    logger.info(f"Loading model {model_name} on device {device}")
 
-    # Move model to device
-    model.to(device)
+    # Initialize the appropriate model and image processor based on the model name
+    if "oneformer" == model_type:
+        warnings.warn(
+            "OneFormer models are experimental and may not be fully supported"
+        )
+        try:
+            model = OneFormerForUniversalSegmentation.from_pretrained(
+                model_name, device_map=device_map
+            )
+            processor = AutoProcessor.from_pretrained(model_name)
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to load OneFormer model '{model_name}': {e}"
+            ) from e
+
+    elif "mask2former" == model_type:
+        model = Mask2FormerForUniversalSegmentation.from_pretrained(
+            model_name, device_map=device_map
+        )
+        processor = AutoImageProcessor.from_pretrained(model_name)
+
+    elif "maskformer" == model_type:
+        model = MaskFormerForInstanceSegmentation.from_pretrained(
+            model_name, device_map=device_map
+        )
+        processor = AutoImageProcessor.from_pretrained(model_name)
+
+    elif "beit" == model_type:
+        if device != "cpu":
+            logger.warning(
+                "Beit models are not supported on GPU and will be loaded on CPU"
+            )
+        device = "cpu"
+        model = BeitForSemanticSegmentation.from_pretrained(
+            model_name, device_map=device_map
+        )
+        processor = AutoImageProcessor.from_pretrained(model_name)
+
+    elif "segformer" == model_type:
+        model = SegformerForSemanticSegmentation.from_pretrained(
+            model_name, device_map=device_map
+        )
+        processor = AutoImageProcessor.from_pretrained(model_name)
+
+        if dataset == "sidewalk-semantic":
+            logger.debug("Loading Sidewalk Semantic dataset label mappings...")
+            with open("SemanticSidewalk_id2label.json") as f:
+                id2label = json.load(f)
+            model.config.id2label = id2label
+    else:
+        model = AutoModelForSemanticSegmentation.from_pretrained(
+            model_name, device_map=device_map
+        )
+        processor = AutoImageProcessor.from_pretrained(model_name)
+
     model.eval()
 
     logger.info("Model loaded successfully")

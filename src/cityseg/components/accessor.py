@@ -17,6 +17,12 @@ import xarray as xr
 from loguru import logger
 
 
+@xr.register_dataarray_accessor("seg")
+class SegmentArray:
+    def __init__(self, xarray_arr: xr.DataArray):
+        self._arr = xarray_arr
+
+
 @xr.register_dataset_accessor("seg")
 class SegmentationAccessor:
     """xarray accessor for segmentation-specific operations.

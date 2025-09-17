@@ -21,6 +21,10 @@ For detailed usage instructions, please refer to the package documentation.
 
 __version__ = "0.3.1rc0"
 
+from . import palettes
+from .config import Config
+from .pipeline import SegmentationPipeline, create_segmentation_pipeline
+
 # Core xarray-based functionality
 from .components import (
     MediaDataset,
@@ -42,10 +46,30 @@ from .segmentation import (
     segment_video_file,
 )
 
+from .xarray_video import (
+    ImageArray,
+    ImageDataset,
+    open_image,
+    VideoArray,
+    VideoDataset,
+    open_video,
+)
+
 # Essential exceptions
 from .exceptions import ConfigurationError, InputError, ModelError, ProcessingError
 
 __all__ = [
+    "palettes",
+    "Config",
+    "SegmentationPipeline",
+    "create_segmentation_pipeline",
+    # xarray-video API
+    "ImageArray",
+    "ImageDataset",
+    "open_image",
+    "VideoArray",
+    "VideoDataset",
+    "open_video",
     # Core Dataset API
     "MediaDataset",
     "SegmentationDataset",
